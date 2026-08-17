@@ -1,0 +1,29 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Data & model artifacts (large, don't commit)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+checkpoints/
+outputs/
+*.safetensors
+*.bin
+wandb/
+mlruns/
+
+# Env / secrets
+.env
+
+# Reports (generated, keep folder only)
+reports/*
+!reports/.gitkeep

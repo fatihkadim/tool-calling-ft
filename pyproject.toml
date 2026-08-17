@@ -1,0 +1,28 @@
+[project]
+name = "tool-calling-ft"
+version = "0.1.0"
+description = "LoRA vs QLoRA vs DoRA vs Full Fine-Tuning karşılaştırması — Tool Calling görevi üzerinde"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.4",
+    "transformers>=4.46",
+    "peft>=0.13",
+    "bitsandbytes>=0.44",
+    "accelerate>=1.0",
+    "datasets>=3.0",
+    "trl>=0.11",
+    "pandas>=2.2",
+    "pyyaml>=6.0",
+    "matplotlib>=3.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ipykernel>=6.29",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
