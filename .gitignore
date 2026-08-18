@@ -27,3 +27,5 @@ mlruns/
 # Reports (generated, keep folder only)
 reports/*
 !reports/.gitkeep
+
+1.md
