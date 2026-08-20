@@ -30,7 +30,7 @@ def load_model_and_tokenizer(
     model_name_or_path: str = "Qwen/Qwen2.5-0.5B",
     adapter_path: str | Path | None = None,
     device: str = "auto",
-    torch_dtype: str = "auto",
+    torch_dtype: str | torch.dtype = "auto",
 ) -> tuple[Any, Any]:
     """Base modeli veya adapter yüklenmiş fine-tune modelini ve tokenizer'ı yükler."""
     logger.info("Tokenizer yükleniyor: %s", model_name_or_path)

@@ -32,6 +32,17 @@ def test_parse_tools_and_names():
     parsed = parse_tools(json_str)
     assert len(parsed) == 5
 
+    # Tek dict → list[dict] dönüşümü
+    single_tool = json.dumps(DEFAULT_TOOLS[0])
+    parsed_single = parse_tools(single_tool)
+    assert len(parsed_single) == 1
+
+    # Geçersiz string → boş liste
+    assert parse_tools("not valid json") == []
+
+    # Boş string → boş liste
+    assert parse_tools("") == []
+
 
 def test_build_system_prompt():
     prompt = build_system_prompt(DEFAULT_TOOLS[:2])
@@ -39,6 +50,7 @@ def test_build_system_prompt():
     assert "</tools>" in prompt
     assert "get_current_weather" in prompt
     assert "<tool_call>" in prompt
+    assert "function calling AI model" in prompt
 
 
 def test_parse_tool_calls_from_text():
@@ -65,6 +77,15 @@ def test_parse_tool_calls_from_text():
     no_tool_text = "The capital of France is Paris."
     assert parse_tool_calls_from_text(no_tool_text) == []
 
+    # Fallback: XML tag olmadan bare JSON
+    bare_json = '{"name": "calc", "arguments": {"x": 42}}'
+    bare_calls = parse_tool_calls_from_text(bare_json)
+    assert len(bare_calls) == 1
+    assert bare_calls[0]["name"] == "calc"
+
+    # Boş string
+    assert parse_tool_calls_from_text("") == []
+
 
 def test_format_chatml():
     chatml = format_chatml("System prompt", "User query", "Assistant response")
@@ -72,8 +93,13 @@ def test_format_chatml():
     assert "<|im_start|>user\nUser query<|im_end|>" in chatml
     assert "<|im_start|>assistant\nAssistant response<|im_end|>" in chatml
 
+    # Whitespace temizleme
+    chatml_ws = format_chatml("  System  ", "  User  ", "  Assistant  ")
+    assert "<|im_start|>system\nSystem<|im_end|>" in chatml_ws
+
 
 def test_parse_raw_item():
+    # Pozitif örnek (tool call var)
     raw_item = {
         "id": "test-123",
         "conversations": [
@@ -94,6 +120,44 @@ def test_parse_raw_item():
     assert parsed["expected_tool"] == "get_current_weather"
     assert parsed["expected_arguments"] == {"location": "London"}
     assert len(parsed["messages"]) == 3
+    assert "text" in parsed  # ChatML formatı mevcut
+
+    # Negatif örnek (tool call yok, düz metin)
+    raw_neg = {
+        "id": "test-neg",
+        "conversations": [
+            {"from": "system", "value": "System prompt"},
+            {"from": "human", "value": "What is 2+2?"},
+            {"from": "gpt", "value": "The answer is 4."},
+        ],
+        "tools": "[]",
+    }
+    parsed_neg = parse_raw_item(raw_neg)
+    assert parsed_neg is not None
+    assert parsed_neg["is_tool_call"] is False
+    assert parsed_neg["expected_tool"] is None
+    assert parsed_neg["expected_arguments"] is None
+
+    # Yetersiz conversation (3'ten az) → None döner
+    raw_short = {
+        "id": "test-short",
+        "conversations": [
+            {"from": "system", "value": "System"},
+            {"from": "human", "value": "Hello"},
+        ],
+    }
+    assert parse_raw_item(raw_short) is None
+
+    # Boş değerler → None döner
+    raw_empty = {
+        "id": "test-empty",
+        "conversations": [
+            {"from": "system", "value": ""},
+            {"from": "human", "value": "Hello"},
+            {"from": "gpt", "value": "Hi"},
+        ],
+    }
+    assert parse_raw_item(raw_empty) is None
 
 
 def test_build_negative_examples():
@@ -105,6 +169,21 @@ def test_build_negative_examples():
         assert neg["expected_arguments"] is None
         assert "<|im_start|>system" in neg["text"]
         assert "<tool_call>" not in neg["assistant"]
+        assert neg["all_expected_tool_calls"] == []
+        assert len(neg["messages"]) == 3
+
+    # Boş tools_pool → DEFAULT_TOOLS kullanılmalı
+    negs_default = build_negative_examples([], count=3, seed=99)
+    assert len(negs_default) == 3
+    for neg in negs_default:
+        assert neg["tools"] is not None
+
+    # Seed determinizmi: aynı seed → aynı sonuç
+    negs_a = build_negative_examples([DEFAULT_TOOLS], count=5, seed=42)
+    negs_b = build_negative_examples([DEFAULT_TOOLS], count=5, seed=42)
+    for a, b in zip(negs_a, negs_b):
+        assert a["user"] == b["user"]
+        assert a["assistant"] == b["assistant"]
 
 
 def test_dataset_pipeline_end_to_end(tmp_path: Path):
@@ -147,3 +226,25 @@ def test_dataset_pipeline_end_to_end(tmp_path: Path):
     assert (processed_dir / "val.jsonl").exists()
     assert (processed_dir / "eval_subset.jsonl").exists()
     assert (processed_dir / "dataset_summary.json").exists()
+
+    # Dosya içeriklerini doğrula
+    train_lines = (processed_dir / "train.jsonl").read_text(encoding="utf-8").strip().split("\n")
+    val_lines = (processed_dir / "val.jsonl").read_text(encoding="utf-8").strip().split("\n")
+    eval_lines = (processed_dir / "eval_subset.jsonl").read_text(encoding="utf-8").strip().split("\n")
+
+    assert len(train_lines) == summary["train_samples"]
+    assert len(val_lines) == summary["val_samples"]
+    assert len(eval_lines) <= summary["eval_subset_samples"]
+
+    # Her satır geçerli JSON olmalı
+    for line in train_lines[:5]:
+        item = json.loads(line)
+        assert "user" in item
+        assert "assistant" in item
+        assert "is_tool_call" in item
+
+    # Summary dosyası doğru içeriğe sahip olmalı
+    with open(processed_dir / "dataset_summary.json", "r", encoding="utf-8") as f:
+        saved_summary = json.load(f)
+    assert saved_summary["total_samples"] == 25
+    assert saved_summary["seed"] == 42

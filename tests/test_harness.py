@@ -10,9 +10,8 @@ import torch
 from tool_calling_ft.eval.harness import (
     build_generation_prompt,
     run_eval,
-    run_inference_on_samples,
 )
-from tool_calling_ft.utils.logging import count_trainable_params, track_vram_and_time
+from tool_calling_ft.utils.logging import count_trainable_params, save_metrics_report, track_vram_and_time
 
 
 def test_build_generation_prompt():
@@ -24,6 +23,17 @@ def test_build_generation_prompt():
     assert "<|im_start|>system\nSystem prompt with tools<|im_end|>" in prompt
     assert "<|im_start|>user\nWhat is the weather?<|im_end|>" in prompt
     assert prompt.endswith("<|im_start|>assistant\n")
+
+    # Boş system/user
+    item_empty = {"system": "", "user": ""}
+    prompt_empty = build_generation_prompt(item_empty)
+    assert "<|im_start|>system\n<|im_end|>" in prompt_empty
+    assert "<|im_start|>assistant\n" in prompt_empty
+
+    # Eksik key → boş string kullanılmalı
+    item_missing = {}
+    prompt_missing = build_generation_prompt(item_missing)
+    assert "<|im_start|>assistant\n" in prompt_missing
 
 
 def test_count_trainable_params():
@@ -40,12 +50,41 @@ def test_count_trainable_params():
     assert stats_frozen["trainable_params"] == 0
     assert stats_frozen["trainable_percentage"] == 0.0
 
+    # Kısmi freeze (Sequential model)
+    model = torch.nn.Sequential(
+        torch.nn.Linear(10, 5),  # 55 param
+        torch.nn.Linear(5, 3),   # 18 param
+    )
+    # İlk katmanı dondur
+    for p in model[0].parameters():
+        p.requires_grad = False
+    stats_partial = count_trainable_params(model)
+    assert stats_partial["trainable_params"] == 18
+    assert stats_partial["all_params"] == 73
+    assert 24.0 < stats_partial["trainable_percentage"] < 25.0
+
 
 def test_track_vram_and_time():
     with track_vram_and_time("Test block") as stats:
         x = sum(range(1000))
     assert stats["elapsed_seconds"] >= 0.0
     assert "peak_vram_mb" in stats
+    assert stats["description"] == "Test block"
+
+
+def test_save_metrics_report(tmp_path: Path):
+    metrics = {"accuracy": 0.95, "loss": 0.05}
+    report_path = save_metrics_report(metrics, "test_report.json", tmp_path)
+    assert report_path.exists()
+    assert report_path.name == "test_report.json"
+
+    with open(report_path, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+    assert loaded == metrics
+
+    # .json uzantısı otomatik eklenmeli
+    report_path2 = save_metrics_report(metrics, "test_report_2", tmp_path)
+    assert report_path2.name == "test_report_2.json"
 
 
 def test_run_eval_end_to_end_mock(tmp_path: Path):
@@ -104,8 +143,41 @@ def test_run_eval_end_to_end_mock(tmp_path: Path):
             output_dir=report_dir,
         )
 
+    # Temel rapor yapısı
     assert report["method"] == "test_method"
+    assert report["base_model"] == "dummy-model"
+    assert report["adapter_path"] is None
+
+    # Kalite metrikleri
     assert report["quality_metrics"]["total_examples"] == 1
     assert report["quality_metrics"]["tool_selection_accuracy"] == 1.0
     assert report["quality_metrics"]["argument_accuracy"] == 1.0
+    assert report["quality_metrics"]["json_validity_rate"] == 1.0
+
+    # Performans metrikleri mevcut olmalı
+    assert "total_samples" in report["performance_metrics"]
+    assert "throughput_tokens_per_sec" in report["performance_metrics"]
+    assert "elapsed_seconds" in report["performance_metrics"]
+
+    # Parametre istatistikleri mevcut olmalı
+    assert "trainable_params" in report["parameter_stats"]
+    assert "all_params" in report["parameter_stats"]
+
+    # Rapor dosyası kaydedilmiş olmalı
     assert (report_dir / "test_method_metrics.json").exists()
+
+    # Kaydedilen rapor ile dönen rapor eşleşmeli
+    with open(report_dir / "test_method_metrics.json", "r", encoding="utf-8") as f:
+        saved_report = json.load(f)
+    assert saved_report["method"] == "test_method"
+    assert saved_report["quality_metrics"]["tool_selection_accuracy"] == 1.0
+
+
+def test_run_eval_file_not_found():
+    """Olmayan dataset dosyasıyla FileNotFoundError fırlatmalı."""
+    with pytest.raises(FileNotFoundError):
+        run_eval(
+            model_name_or_path="dummy-model",
+            dataset_path="nonexistent/path.jsonl",
+            method_name="test",
+        )

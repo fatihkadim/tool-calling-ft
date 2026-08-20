@@ -8,11 +8,7 @@ Kullanım:
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
-
-# src dizinini python path'e ekle
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from tool_calling_ft.eval.harness import run_eval
 

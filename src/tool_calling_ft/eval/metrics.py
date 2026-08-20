@@ -122,7 +122,7 @@ def argument_accuracy(example: ToolCallExample) -> float:
 
     expected_args = example.expected_arguments or {}
     if not expected_args:
-        return 1.0 if not pred_args else 1.0
+        return 1.0 if not pred_args else 0.0
 
     total_fields = len(expected_args)
     matched_fields = 0
