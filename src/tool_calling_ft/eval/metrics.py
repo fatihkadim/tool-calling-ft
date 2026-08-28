@@ -39,17 +39,21 @@ def extract_raw_tool_call_json(raw: str) -> list[str]:
     return []
 
 
-def is_valid_json(raw: str) -> bool:
+def is_valid_json(raw: str, expected_tool: str | None = None) -> bool:
     """Modelin ürettiği tool call JSON'ının sözdizimsel olarak geçerli olup olmadığını kontrol eder.
 
-    Eğer model çıktı üretmemişse veya tool gerekmeyen bir durumda düz metin dönmüşse ve
-    içinde malformed tool_call tag'i yoksa geçerli kabul edilir.
+    - Eğer expected_tool varsa (pozitif örnek) ve model hiç tool_call üretmemişse → False.
+    - Eğer expected_tool yoksa (negatif örnek) ve model düz metin dönmüşse → True.
+    - Malformed tool_call tag'i varsa → False.
     """
     json_blocks = extract_raw_tool_call_json(raw)
     if not json_blocks:
         # Tool call etiketi yoksa ve kullanıcıya düz metin yanıt verilmişse
         if "<tool_call>" in raw:
             # Açılış etiketi var ama kapanış yok veya malformed
+            return False
+        # Pozitif örneklerde tool_call üretilmemişse → geçersiz
+        if expected_tool is not None:
             return False
         return True
 
@@ -159,71 +163,116 @@ def is_invalid_tool_call(example: ToolCallExample, known_tools: set[str]) -> boo
 def aggregate_metrics(examples: list[ToolCallExample], known_tools: set[str]) -> dict[str, Any]:
     """Tüm örnekler üzerinde metrikleri toplayıp özet istatistik sözlüğü döndürür.
 
+    Pozitif (tool beklenen) ve negatif (tool beklenmeyen) örnekler ayrı ayrı
+    raporlanır, böylece negatif örneklerin toplam skoru yapay olarak şişirmesi
+    engellenir.
+
     Dönen anahtarlar:
-      - total_examples
-      - tool_selection_accuracy
-      - argument_accuracy
-      - json_validity_rate
+      - total_examples, tool_required_count, no_tool_required_count
+      - tool_selection_accuracy (toplam — geriye dönük uyumluluk)
+      - positive_tool_selection_accuracy (yalnızca pozitif örnekler)
+      - negative_rejection_accuracy (negatif örneklerde tool çağırmama oranı)
+      - positive_argument_accuracy (yalnızca pozitif örnekler)
+      - argument_accuracy (toplam — geriye dönük uyumluluk)
+      - positive_json_validity (yalnızca pozitif örnekler)
+      - json_validity_rate (toplam)
       - invalid_tool_call_rate
       - unnecessary_tool_call_rate
-      - tool_required_count
-      - no_tool_required_count
     """
     if not examples:
         return {
             "total_examples": 0,
             "tool_selection_accuracy": 0.0,
+            "positive_tool_selection_accuracy": 0.0,
+            "negative_rejection_accuracy": 0.0,
             "argument_accuracy": 0.0,
+            "positive_argument_accuracy": 0.0,
             "json_validity_rate": 0.0,
+            "positive_json_validity": 0.0,
             "invalid_tool_call_rate": 0.0,
             "unnecessary_tool_call_rate": 0.0,
         }
 
     total = len(examples)
+
+    # Toplam sayaçlar
     tool_sel_correct = 0
     arg_acc_sum = 0.0
     valid_json_count = 0
     invalid_tool_count = 0
-    unnecessary_tool_count = 0
 
-    tool_req_total = 0
-    no_tool_total = 0
+    # Pozitif (tool beklenen) sayaçlar
+    pos_total = 0
+    pos_sel_correct = 0
+    pos_arg_acc_sum = 0.0
+    pos_valid_json = 0
+
+    # Negatif (tool beklenmeyen) sayaçlar
+    neg_total = 0
+    neg_rejection_correct = 0
+    unnecessary_tool_count = 0
 
     for ex in examples:
         tools_set = ex.known_tools if ex.known_tools is not None else known_tools
 
-        # 1. JSON Validity
-        if is_valid_json(ex.predicted_raw):
+        # 1. JSON Validity — artık expected_tool bilgisi ile doğru değerlendirme
+        json_valid = is_valid_json(ex.predicted_raw, expected_tool=ex.expected_tool)
+        if json_valid:
             valid_json_count += 1
 
         # 2. Tool Selection
-        if tool_selection_correct(ex):
+        sel_correct = tool_selection_correct(ex)
+        if sel_correct:
             tool_sel_correct += 1
 
         # 3. Argument Accuracy
-        arg_acc_sum += argument_accuracy(ex)
+        arg_acc = argument_accuracy(ex)
+        arg_acc_sum += arg_acc
 
         # 4. Invalid Tool Call (bilinmeyen fonksiyon çağırma)
         if is_invalid_tool_call(ex, tools_set):
             invalid_tool_count += 1
 
-        # 5. Unnecessary Tool Call (tool gerekmiyorken çağırma)
-        if ex.expected_tool is None:
-            no_tool_total += 1
+        # 5. Pozitif vs Negatif ayrıştırma
+        if ex.expected_tool is not None:
+            pos_total += 1
+            if sel_correct:
+                pos_sel_correct += 1
+            pos_arg_acc_sum += arg_acc
+            if json_valid:
+                pos_valid_json += 1
+        else:
+            neg_total += 1
+            if sel_correct:
+                neg_rejection_correct += 1
             if is_unnecessary_tool_call(ex):
                 unnecessary_tool_count += 1
-        else:
-            tool_req_total += 1
 
     return {
         "total_examples": total,
+        "tool_required_count": pos_total,
+        "no_tool_required_count": neg_total,
+        # Toplam metrikler (geriye dönük uyumluluk)
         "tool_selection_accuracy": round(tool_sel_correct / total, 4),
         "argument_accuracy": round(arg_acc_sum / total, 4),
         "json_validity_rate": round(valid_json_count / total, 4),
         "invalid_tool_call_rate": round(invalid_tool_count / total, 4),
-        "unnecessary_tool_call_rate": (
-            round(unnecessary_tool_count / no_tool_total, 4) if no_tool_total > 0 else 0.0
+        # Pozitif (tool beklenen) metrikler
+        "positive_tool_selection_accuracy": (
+            round(pos_sel_correct / pos_total, 4) if pos_total > 0 else 0.0
         ),
-        "tool_required_count": tool_req_total,
-        "no_tool_required_count": no_tool_total,
+        "positive_argument_accuracy": (
+            round(pos_arg_acc_sum / pos_total, 4) if pos_total > 0 else 0.0
+        ),
+        "positive_json_validity": (
+            round(pos_valid_json / pos_total, 4) if pos_total > 0 else 0.0
+        ),
+        # Negatif (tool beklenmeyen) metrikler
+        "negative_rejection_accuracy": (
+            round(neg_rejection_correct / neg_total, 4) if neg_total > 0 else 0.0
+        ),
+        "unnecessary_tool_call_rate": (
+            round(unnecessary_tool_count / neg_total, 4) if neg_total > 0 else 0.0
+        ),
     }
+

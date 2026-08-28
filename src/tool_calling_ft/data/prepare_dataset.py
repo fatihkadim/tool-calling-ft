@@ -141,11 +141,15 @@ def parse_raw_item(raw_item: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-# Çeşitli negatif örnek şablonları (tool şeması verildiği halde tool çağrısı yapılmaması gereken durumlar)
-NEGATIVE_TEMPLATES = [
+# ──────────────────────────────────────────────────────────────────────
+# Negatif örnek şablonları — TRAIN ve VAL ayrı tutularak leakage önlenir.
+# Semantik çakışma riski olan şablonlar (calculate, email) kaldırıldı.
+# ──────────────────────────────────────────────────────────────────────
+
+TRAIN_NEGATIVE_TEMPLATES: list[tuple[str, str]] = [
     (
         "Hello! How are you today? Can you give me a quick summary of what you can help me with?",
-        "Hello! I am doing well, thank you. I am an AI assistant equipped with various tools to assist you with tasks such as data analysis, information retrieval, math calculations, and more. Feel free to let me know what you need help with!",
+        "Hello! I am doing well, thank you. I am an AI assistant equipped with various tools to assist you with tasks such as data analysis, information retrieval, and more. Feel free to let me know what you need help with!",
     ),
     (
         "What is the capital of France?",
@@ -164,20 +168,12 @@ NEGATIVE_TEMPLATES = [
         "Silent lanterns in the deep,\nWatching over worlds asleep.\nSilver sparks of ancient light,\nGuiding travelers through the night.",
     ),
     (
-        "Can you calculate what 45 multiplied by 12 is?",
-        "45 multiplied by 12 is 540.",
-    ),
-    (
         "What is the boiling point of water at sea level?",
         "The boiling point of water at sea level is 100°C (212°F).",
     ),
     (
         "Explain what a binary search tree is in computer science.",
         "A binary search tree (BST) is a node-based data structure where each node has at most two children. The left subtree contains only nodes with keys less than the parent's key, and the right subtree contains only nodes with keys greater than the parent's key, enabling efficient searching, insertion, and deletion.",
-    ),
-    (
-        "Can you help me send an email?",
-        "Certainly! Please provide the recipient's email address, the subject line, and the message content you would like to include.",
     ),
     (
         "What are some key health benefits of drinking sufficient water daily?",
@@ -196,6 +192,21 @@ NEGATIVE_TEMPLATES = [
         "Here is a simple Python function:\n\n```python\ndef is_palindrome(s: str) -> bool:\n    cleaned = ''.join(c.lower() for c in s if c.isalnum())\n    return cleaned == cleaned[::-1]\n```",
     ),
     (
+        "What is the Pythagorean theorem and why is it important?",
+        "The Pythagorean theorem states that in a right-angled triangle, the square of the hypotenuse (the side opposite the right angle) is equal to the sum of the squares of the other two sides: a² + b² = c². It is fundamental in geometry, physics, engineering, and navigation.",
+    ),
+    (
+        "Explain the concept of recursion in programming with a simple example.",
+        "Recursion is a programming technique where a function calls itself to solve a smaller instance of the same problem. A classic example is computing factorial: factorial(n) = n * factorial(n-1), with factorial(0) = 1 as the base case.",
+    ),
+    (
+        "What is the significance of the Turing test in artificial intelligence?",
+        "The Turing test, proposed by Alan Turing in 1950, is a measure of machine intelligence. A machine passes the test if a human evaluator cannot reliably distinguish between the machine's responses and those of a human, suggesting the machine exhibits intelligent behavior.",
+    ),
+]
+
+VAL_NEGATIVE_TEMPLATES: list[tuple[str, str]] = [
+    (
         "I need to book a hotel room, but I haven't decided on the city yet.",
         "Take your time! Once you decide on the city, check-in and check-out dates, and the number of guests, let me know and I can assist you with the booking.",
     ),
@@ -203,17 +214,54 @@ NEGATIVE_TEMPLATES = [
         "Thank you so much for your assistance, that was very helpful!",
         "You're very welcome! If you have any other questions or need further assistance, feel free to ask anytime.",
     ),
+    (
+        "What is the difference between compiled and interpreted programming languages?",
+        "Compiled languages (like C or Rust) are translated directly into machine code before execution, resulting in faster runtime performance. Interpreted languages (like Python or JavaScript) are executed line-by-line by an interpreter, offering more flexibility and easier debugging but typically slower execution.",
+    ),
+    (
+        "Who painted the Mona Lisa and where is it displayed?",
+        "The Mona Lisa was painted by Leonardo da Vinci, likely between 1503 and 1519. It is displayed at the Louvre Museum in Paris, France.",
+    ),
+    (
+        "What are the main differences between classical and operant conditioning?",
+        "Classical conditioning (Pavlov) involves learning through association — a neutral stimulus becomes associated with an unconditioned stimulus to elicit a response. Operant conditioning (Skinner) involves learning through consequences — behaviors are strengthened by reinforcement or weakened by punishment.",
+    ),
+    (
+        "Can you explain what a blockchain is in simple terms?",
+        "A blockchain is a distributed, decentralized digital ledger that records transactions across many computers in a way that makes it virtually impossible to alter past records. Each block contains a list of transactions and a cryptographic hash of the previous block, forming a chain.",
+    ),
 ]
+
+
+def _has_semantic_overlap(user_question: str, tools: list[dict[str, Any]]) -> bool:
+    """Negatif bir sorunun, mevcut tool isim/açıklamalarıyla semantik çakışıp çakışmadığını kontrol eder.
+
+    Basit anahtar kelime eşleştirmesi kullanır: tool ismindeki kelimeler
+    (alt çizgilerle ayrılmış) kullanıcının sorusunda geçiyorsa çakışma var demektir.
+    """
+    question_lower = user_question.lower()
+    for tool in tools:
+        fn = tool.get("function", tool)
+        tool_name = fn.get("name", "")
+        # "calculate_math_expression" → ["calculate", "math", "expression"]
+        keywords = [kw for kw in tool_name.lower().split("_") if len(kw) > 2]
+        for kw in keywords:
+            if kw in question_lower:
+                return True
+    return False
 
 
 def build_negative_examples(
     tools_pool: list[list[dict[str, Any]]],
+    templates: list[tuple[str, str]],
     count: int = 250,
     seed: int = 42,
 ) -> list[dict[str, Any]]:
     """Sistem promptunda tool'lar tanımlı olduğu halde kullanıcının tool gerektirmeyen sorularına
-
     dair negatif örnekler üretir (expected_tool = None).
+
+    Semantik çakışma filtresi: Eğer seçilen soru ile rastgele atanan tool seti arasında
+    anahtar kelime çakışması varsa, o tool seti atlanır ve başka bir tane denenir.
     """
     rng = random.Random(seed)
     negative_examples: list[dict[str, Any]] = []
@@ -222,8 +270,22 @@ def build_negative_examples(
         tools_pool = [DEFAULT_TOOLS]
 
     for idx in range(count):
-        user_q, assistant_ans = rng.choice(NEGATIVE_TEMPLATES)
-        tools_sample = rng.choice(tools_pool)
+        user_q, assistant_ans = rng.choice(templates)
+
+        # Semantik çakışma olmayan bir tools_sample bul (en fazla 10 deneme)
+        tools_sample = None
+        for _ in range(10):
+            candidate = rng.choice(tools_pool)
+            if not _has_semantic_overlap(user_q, candidate):
+                tools_sample = candidate
+                break
+        if tools_sample is None:
+            # Tüm denemeler çakıştı — bu şablonu atla ve başka birini dene
+            user_q, assistant_ans = rng.choice(
+                [(q, a) for q, a in templates if not _has_semantic_overlap(q, rng.choice(tools_pool))]
+            )
+            tools_sample = rng.choice(tools_pool)
+
         system_prompt = build_system_prompt(tools_sample)
         chatml_text = format_chatml(system_prompt, user_q, assistant_ans)
 
@@ -257,7 +319,11 @@ def prepare_and_process_dataset(
     eval_subset_size: int = 100,
     seed: int = 42,
 ) -> dict[str, Any]:
-    """Ham veriyi okur, negatif örnekleri ekler, train/val split oluşturur ve kaydeder."""
+    """Ham veriyi okur, negatif örnekleri ekler, train/val split oluşturur ve kaydeder.
+
+    Leakage önleme: Negatif örnekler TRAIN ve VAL için ayrı şablon havuzlarından
+    üretilir, böylece aynı şablonlar hem eğitim hem doğrulama setine düşmez.
+    """
     raw_path = Path(raw_file)
     if not raw_path.exists():
         logger.info("Ham veri bulunamadı, indiriliyor: %s", raw_path)
@@ -281,25 +347,42 @@ def prepare_and_process_dataset(
 
     logger.info("Ayrıştırılan orijinal örnek sayısı: %d", len(positive_examples))
 
-    # Negatif örnekler üret
-    negative_examples = build_negative_examples(
+    # Pozitif örnekleri train/val olarak böl
+    rng = random.Random(seed)
+    rng.shuffle(positive_examples)
+
+    total_pos = len(positive_examples)
+    val_pos_count = int(total_pos * val_ratio)
+    train_positives = positive_examples[: total_pos - val_pos_count]
+    val_positives = positive_examples[total_pos - val_pos_count :]
+
+    # Negatif örnekleri AYRI şablon havuzlarından üret (leakage önleme)
+    val_neg_count = int(num_negatives * val_ratio)
+    train_neg_count = num_negatives - val_neg_count
+
+    train_negatives = build_negative_examples(
         tools_pool=tools_pool,
-        count=num_negatives,
+        templates=TRAIN_NEGATIVE_TEMPLATES,
+        count=train_neg_count,
         seed=seed,
     )
-    logger.info("Üretilen sentetik negatif örnek sayısı: %d", len(negative_examples))
+    val_negatives = build_negative_examples(
+        tools_pool=tools_pool,
+        templates=VAL_NEGATIVE_TEMPLATES,
+        count=val_neg_count,
+        seed=seed + 1,  # Farklı seed ile farklı tool kombinasyonları
+    )
+    logger.info(
+        "Üretilen sentetik negatif örnek sayısı: train=%d, val=%d",
+        len(train_negatives),
+        len(val_negatives),
+    )
 
-    # Tüm örnekleri birleştir ve karıştır
-    all_examples = positive_examples + negative_examples
-    rng = random.Random(seed)
-    rng.shuffle(all_examples)
-
-    total_count = len(all_examples)
-    val_count = int(total_count * val_ratio)
-    train_count = total_count - val_count
-
-    train_data = all_examples[:train_count]
-    val_data = all_examples[train_count:]
+    # Train ve val setlerini oluştur
+    train_data = train_positives + train_negatives
+    val_data = val_positives + val_negatives
+    rng.shuffle(train_data)
+    rng.shuffle(val_data)
 
     # Hızlı baseline eval için val setinden dengeli bir eval_subset oluştur
     eval_pos = [x for x in val_data if x["is_tool_call"]]
@@ -334,13 +417,16 @@ def prepare_and_process_dataset(
         for item in eval_subset:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
+    all_examples = train_data + val_data
     summary = {
-        "total_samples": total_count,
+        "total_samples": len(all_examples),
         "train_samples": len(train_data),
         "val_samples": len(val_data),
         "eval_subset_samples": len(eval_subset),
         "positive_tool_calls": sum(1 for x in all_examples if x["is_tool_call"]),
         "negative_examples": sum(1 for x in all_examples if not x["is_tool_call"]),
+        "train_negatives_template_count": len(TRAIN_NEGATIVE_TEMPLATES),
+        "val_negatives_template_count": len(VAL_NEGATIVE_TEMPLATES),
         "val_ratio": val_ratio,
         "seed": seed,
     }

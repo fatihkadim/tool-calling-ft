@@ -161,7 +161,9 @@ def test_parse_raw_item():
 
 
 def test_build_negative_examples():
-    negs = build_negative_examples([DEFAULT_TOOLS], count=10, seed=42)
+    from tool_calling_ft.data.prepare_dataset import TRAIN_NEGATIVE_TEMPLATES
+
+    negs = build_negative_examples([DEFAULT_TOOLS], templates=TRAIN_NEGATIVE_TEMPLATES, count=10, seed=42)
     assert len(negs) == 10
     for neg in negs:
         assert neg["is_tool_call"] is False
@@ -173,14 +175,14 @@ def test_build_negative_examples():
         assert len(neg["messages"]) == 3
 
     # Boş tools_pool → DEFAULT_TOOLS kullanılmalı
-    negs_default = build_negative_examples([], count=3, seed=99)
+    negs_default = build_negative_examples([], templates=TRAIN_NEGATIVE_TEMPLATES, count=3, seed=99)
     assert len(negs_default) == 3
     for neg in negs_default:
         assert neg["tools"] is not None
 
     # Seed determinizmi: aynı seed → aynı sonuç
-    negs_a = build_negative_examples([DEFAULT_TOOLS], count=5, seed=42)
-    negs_b = build_negative_examples([DEFAULT_TOOLS], count=5, seed=42)
+    negs_a = build_negative_examples([DEFAULT_TOOLS], templates=TRAIN_NEGATIVE_TEMPLATES, count=5, seed=42)
+    negs_b = build_negative_examples([DEFAULT_TOOLS], templates=TRAIN_NEGATIVE_TEMPLATES, count=5, seed=42)
     for a, b in zip(negs_a, negs_b):
         assert a["user"] == b["user"]
         assert a["assistant"] == b["assistant"]

@@ -18,6 +18,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from tool_calling_ft.data.tool_schema import extract_tool_names
 from tool_calling_ft.eval.metrics import ToolCallExample, aggregate_metrics
 from tool_calling_ft.utils.logging import count_trainable_params, save_metrics_report, track_vram_and_time
+from tqdm import tqdm
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,7 +85,8 @@ def run_inference_on_samples(
     except (StopIteration, AttributeError):
         model_device = torch.device("cpu")
 
-    for i in range(0, len(samples), batch_size):
+    total_batches = (len(samples) + batch_size - 1) // batch_size
+    for i in tqdm(range(0, len(samples), batch_size), total=total_batches, desc="Inference", unit="batch"):
         batch_items = samples[i : i + batch_size]
         prompts = [build_generation_prompt(item) for item in batch_items]
 
@@ -93,6 +95,14 @@ def run_inference_on_samples(
         attention_mask = inputs["attention_mask"].to(model_device)
 
         start_time = time.perf_counter()
+        # <|im_end|> token'ını stop token olarak ekle — Qwen'in eos_token'ı
+        # <|endoftext|> (151643) ama ChatML mesaj sonu <|im_end|> (151645).
+        # Bu olmadan model doğru yanıttan sonra üretmeye devam eder.
+        im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
+        stop_token_ids = [tokenizer.eos_token_id]
+        if isinstance(im_end_id, int) and im_end_id != tokenizer.eos_token_id:
+            stop_token_ids.append(im_end_id)
+
         with torch.no_grad():
             outputs = model.generate(
                 input_ids=input_ids,
@@ -100,7 +110,7 @@ def run_inference_on_samples(
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
                 pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id,
+                eos_token_id=stop_token_ids,
             )
         batch_duration = time.perf_counter() - start_time
         total_generation_time += batch_duration

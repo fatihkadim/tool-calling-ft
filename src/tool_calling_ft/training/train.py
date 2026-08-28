@@ -1,10 +1,9 @@
 """Yontem-agnostik egitim scripti. configs/*.yaml dosyasindaki 'method' alanina
 gore LoRA/QLoRA/DoRA/Full FT arasinda dallanir.
 
-Kullanim: uv run python -m tool_calling_ft.training.train --config configs/lora.yaml
+Kullanim: uv run python -m tool_calling_ft.training.train --config configs/qlora.yaml
 """
 import argparse
-
 import torch
 import yaml
 from datasets import load_dataset
@@ -13,7 +12,6 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    DataCollatorForLanguageModeling,
     Trainer,
     TrainingArguments,
 )
@@ -135,7 +133,14 @@ def build_trainer(model, config: dict):
     bir preprocessing adimiyla uretilmis oldugu varsayilir. Bu dosyalarda
     her satirin bir 'text' alani (chat-template uygulanmis, duz string)
     icermesi beklenir.
+
+    Degisiklikler:
+    - DataCollatorForCompletionOnlyLM ile yalnizca assistant yanitina loss verilir
+    - Dinamik padding (batch-level) ile VRAM tasarrufu saglanir
+    - warmup_ratio kullanilir (surumden bagimsiz guvenli kullanim)
     """
+    from tool_calling_ft.training.collator import DataCollatorForCompletionOnlyLM
+
     tokenizer = AutoTokenizer.from_pretrained(config["base_model"])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -148,12 +153,14 @@ def build_trainer(model, config: dict):
         },
     )
 
+    max_seq_len = config["training"]["max_seq_len"]
+
     def tokenize_fn(examples):
         return tokenizer(
             examples["text"],
             truncation=True,
-            padding="max_length",
-            max_length=config["training"]["max_seq_len"],
+            padding=False,  # Dinamik padding — collator batch seviyesinde pad eder
+            max_length=max_seq_len,
         )
 
     tokenized = dataset.map(
@@ -166,24 +173,43 @@ def build_trainer(model, config: dict):
         "bnb_4bit_compute_dtype"
     ) != "float16"
 
+    # Config'ten opsiyonel degerler al, yoksa mantikli varsayilan kullan
+    save_steps = config["training"].get("save_steps", 100)
+    batch_size = config["training"]["batch_size"]
+    grad_accum_steps = config["training"]["grad_accum_steps"]
+    epochs = config["training"]["epochs"]
+    warmup_ratio = float(config["training"].get("warmup_ratio", 0.05))
+
+    total_steps = (len(tokenized_train) // (batch_size * grad_accum_steps)) * epochs
+    warmup_steps = config["training"].get("warmup_steps", max(1, int(total_steps * warmup_ratio)))
+
     training_args = TrainingArguments(
         output_dir=config["output_dir"],
-        num_train_epochs=config["training"]["epochs"],
+        num_train_epochs=epochs,
         learning_rate=float(config["training"]["learning_rate"]),
-        gradient_accumulation_steps=config["training"]["grad_accum_steps"],
-        per_device_train_batch_size=config["training"]["batch_size"],
-        per_device_eval_batch_size=8,
+        gradient_accumulation_steps=grad_accum_steps,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=1,
+        eval_accumulation_steps=1,
         seed=config["training"]["seed"],
         eval_strategy="epoch",
-        save_strategy="epoch",
+        save_strategy="steps",
+        save_steps=save_steps,
+        save_total_limit=3,
         logging_steps=10,
-        warmup_ratio=0.05,
+        warmup_steps=warmup_steps,
         bf16=use_bf16,
         fp16=not use_bf16 and torch.cuda.is_available(),
         report_to="none",
     )
 
-    collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+    # Assistant-only loss: Yalnizca "<|im_start|>assistant\n" sonrasi tokenlara
+    # loss uygulanir. System prompt, tool semalari ve user mesaji maskelenir.
+    response_template = "<|im_start|>assistant\n"
+    collator = DataCollatorForCompletionOnlyLM(
+        response_template=response_template,
+        tokenizer=tokenizer,
+    )
 
     trainer = Trainer(
         model=model,
