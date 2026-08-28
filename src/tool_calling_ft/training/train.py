@@ -155,13 +155,53 @@ def build_trainer(model, config: dict):
 
     max_seq_len = config["training"]["max_seq_len"]
 
+    # Tail-preserving truncation: assistant yanitini koruyarak prompt'u soldan kirp.
+    # Standart truncation (soldan) uzun orneklerde assistant yanitini tamamen
+    # siliyordu -> tum label'lar -100 -> eval_loss nan.
+    response_template_str = "<|im_start|>assistant\n"
+    _resp_token_ids = tokenizer.encode(response_template_str, add_special_tokens=False)
+
     def tokenize_fn(examples):
-        return tokenizer(
-            examples["text"],
-            truncation=True,
-            padding=False,  # Dinamik padding — collator batch seviyesinde pad eder
-            max_length=max_seq_len,
-        )
+        results = {"input_ids": [], "attention_mask": []}
+
+        for text in examples["text"]:
+            full = tokenizer(text, truncation=False, padding=False)
+            input_ids = full["input_ids"]
+
+            if len(input_ids) <= max_seq_len:
+                # Sigiyor, oldugu gibi kullan
+                results["input_ids"].append(input_ids)
+                results["attention_mask"].append(full["attention_mask"])
+            else:
+                # Son response template pozisyonunu bul (sondan basla)
+                resp_len = len(_resp_token_ids)
+                resp_pos = None
+                for i in range(len(input_ids) - resp_len, -1, -1):
+                    if input_ids[i : i + resp_len] == _resp_token_ids:
+                        resp_pos = i
+                        break
+
+                if resp_pos is not None:
+                    # Assistant yaniti (template dahil) korunacak
+                    response_part = input_ids[resp_pos:]
+                    prompt_budget = max_seq_len - len(response_part)
+
+                    if prompt_budget > 0:
+                        # Prompt'un SONUNDAN prompt_budget kadar token al
+                        # (bastan kesilir -> tool sema basliklari gider, user sorusu kalir)
+                        prompt_part = input_ids[:resp_pos][-prompt_budget:]
+                        truncated = prompt_part + response_part
+                    else:
+                        # Response tek basina sigmiyor, sagdan kirp
+                        truncated = response_part[:max_seq_len]
+                else:
+                    # Template bulunamadiysa (olagandisi), klasik sol truncation
+                    truncated = input_ids[:max_seq_len]
+
+                results["input_ids"].append(truncated)
+                results["attention_mask"].append([1] * len(truncated))
+
+        return results
 
     tokenized = dataset.map(
         tokenize_fn, batched=True, remove_columns=dataset["train"].column_names
