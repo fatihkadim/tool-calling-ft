@@ -17,14 +17,15 @@ from transformers import (
 )
 
 
-def load_config(ft_method: str) -> dict:
-    with open(f"configs/{ft_method}.yaml", "r") as f:
+def load_config(config_path: str) -> dict:
+    """YAML config dosyasını doğrudan yolundan yükler."""
+    with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     return config
 
 
-def build_model(ft_method: str):
-    config = load_config(ft_method)
+def build_model(config: dict):
+    ft_method = config.get("method", "qlora")
 
     if ft_method == "lora":
         model = AutoModelForCausalLM.from_pretrained(
@@ -264,12 +265,11 @@ def build_trainer(model, config: dict):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, required=True, help="configs/lora.yaml gibi")
+    parser.add_argument("--config", type=str, required=True, help="configs/qlora.yaml gibi")
     args = parser.parse_args()
 
-    ft_method = args.config.split("/")[-1].replace(".yaml", "")
-
-    model, config = build_model(ft_method)
+    config = load_config(args.config)
+    model, config = build_model(config)
     trainer = build_trainer(model, config)
     trainer.train()
     trainer.save_model(config["output_dir"])
