@@ -9,9 +9,43 @@ import torch
 
 from tool_calling_ft.eval.harness import (
     build_generation_prompt,
+    load_model_and_tokenizer,
+    resolve_torch_dtype,
     run_eval,
 )
-from tool_calling_ft.utils.logging import count_trainable_params, save_metrics_report, track_vram_and_time
+from tool_calling_ft.utils.logging import (
+    count_trainable_params,
+    save_metrics_report,
+    track_vram_and_time,
+)
+
+
+def test_resolve_torch_dtype():
+    # Direkt torch.dtype nesnesi
+    assert resolve_torch_dtype(torch.float16) == torch.float16
+    assert resolve_torch_dtype(torch.bfloat16) == torch.bfloat16
+
+    # String mapping
+    assert resolve_torch_dtype("float16") == torch.float16
+    assert resolve_torch_dtype("fp16") == torch.float16
+    assert resolve_torch_dtype("bfloat16") == torch.bfloat16
+    assert resolve_torch_dtype("bf16") == torch.bfloat16
+    assert resolve_torch_dtype("float32") == torch.float32
+    assert resolve_torch_dtype("fp32") == torch.float32
+
+    # GPU olmayan ortamda auto -> float32
+    with patch("torch.cuda.is_available", return_value=False):
+        assert resolve_torch_dtype("auto") == torch.float32
+
+    # T4 GPU simülasyonu: cuda var ama bf16 desteklenmiyor -> float16
+    with patch("torch.cuda.is_available", return_value=True):
+        with patch("torch.cuda.is_bf16_supported", return_value=False):
+            assert resolve_torch_dtype("auto") == torch.float16
+
+    # A100 GPU simülasyonu: cuda var ve bf16 destekleniyor -> bfloat16
+    with patch("torch.cuda.is_available", return_value=True):
+        with patch("torch.cuda.is_bf16_supported", return_value=True):
+            assert resolve_torch_dtype("auto") == torch.bfloat16
 
 
 def test_build_generation_prompt():
@@ -181,3 +215,25 @@ def test_run_eval_file_not_found():
             dataset_path="nonexistent/path.jsonl",
             method_name="test",
         )
+
+
+def test_load_model_and_tokenizer_mock():
+    mock_tok = MagicMock()
+    mock_tok.pad_token = None
+    mock_tok.eos_token = "<|endoftext|>"
+
+    mock_model = MagicMock()
+
+    with patch("transformers.AutoTokenizer.from_pretrained", return_value=mock_tok):
+        with patch("transformers.AutoModelForCausalLM.from_pretrained", return_value=mock_model) as mock_lm:
+            model, tok = load_model_and_tokenizer(
+                model_name_or_path="dummy-model",
+                torch_dtype="float16",
+                load_in_4bit=True,
+            )
+            assert tok.padding_side == "left"
+            assert tok.pad_token == "<|endoftext|>"
+            mock_lm.assert_called_once()
+            call_kwargs = mock_lm.call_args.kwargs
+            assert "quantization_config" in call_kwargs
+            assert call_kwargs["quantization_config"].load_in_4bit is True

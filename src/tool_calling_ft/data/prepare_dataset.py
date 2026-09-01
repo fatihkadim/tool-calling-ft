@@ -23,7 +23,6 @@ from datasets import load_dataset
 from tool_calling_ft.data.tool_schema import (
     DEFAULT_TOOLS,
     build_system_prompt,
-    extract_tool_names,
     parse_tool_calls_from_text,
     parse_tools,
 )
@@ -57,8 +56,7 @@ def download_raw_dataset(
 
     logger.info("Ham veri '%s' dosyasına yazılıyor...", target_file)
     with open(target_file, "w", encoding="utf-8") as f:
-        for item in dataset:
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+        f.writelines(json.dumps(item, ensure_ascii=False) + "\n" for item in dataset)
 
     info = {
         "dataset_name": dataset_name,
@@ -404,18 +402,15 @@ def prepare_and_process_dataset(
 
     logger.info("Train seti kaydediliyor (%d satır) -> %s", len(train_data), train_file)
     with open(train_file, "w", encoding="utf-8") as f:
-        for item in train_data:
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+        f.writelines(json.dumps(item, ensure_ascii=False) + "\n" for item in train_data)
 
     logger.info("Val seti kaydediliyor (%d satır) -> %s", len(val_data), val_file)
     with open(val_file, "w", encoding="utf-8") as f:
-        for item in val_data:
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+        f.writelines(json.dumps(item, ensure_ascii=False) + "\n" for item in val_data)
 
     logger.info("Eval subset kaydediliyor (%d satır) -> %s", len(eval_subset), eval_subset_file)
     with open(eval_subset_file, "w", encoding="utf-8") as f:
-        for item in eval_subset:
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+        f.writelines(json.dumps(item, ensure_ascii=False) + "\n" for item in eval_subset)
 
     all_examples = train_data + val_data
     summary = {

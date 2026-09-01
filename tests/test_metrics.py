@@ -1,6 +1,5 @@
 """eval/metrics.py için pytest testleri."""
 
-import pytest
 
 from tool_calling_ft.eval.metrics import (
     ToolCallExample,

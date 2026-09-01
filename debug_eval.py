@@ -1,11 +1,14 @@
 """Dogrulama: tail-preserving truncation sonrasi eval_loss nan sorunu duzeldi mi?"""
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from transformers import AutoTokenizer
-from tool_calling_ft.training.collator import DataCollatorForCompletionOnlyLM
 import json
+
+from transformers import AutoTokenizer
+
+from tool_calling_ft.training.collator import DataCollatorForCompletionOnlyLM
 
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B")
 if tokenizer.pad_token is None:
@@ -94,9 +97,9 @@ for split in ["train", "val"]:
     print(f"  Ortalama unmasked token/ornek: {total_unmasked/total:.1f}")
     
     if no_response_count == 0 and all_masked_count == 0:
-        print(f"  [OK] BASARILI - eval_loss nan sorunu duzeltildi!")
+        print("  [OK] BASARILI - eval_loss nan sorunu duzeltildi!")
     else:
-        print(f"  [FAIL] HALA SORUNLU")
+        print("  [FAIL] HALA SORUNLU")
     
     # Truncate edilen bir ornegi decode et
     if sample_truncated:
@@ -104,5 +107,5 @@ for split in ["train", "val"]:
         decoded = tokenizer.decode(ids)
         print(f"\n  Truncate edilen ornek #{idx} (ilk 200 char):")
         print(f"    {decoded[:200]}...")
-        print(f"  ... (son 200 char):")
+        print("  ... (son 200 char):")
         print(f"    ...{decoded[-200:]}")

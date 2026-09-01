@@ -1,6 +1,5 @@
 """tests/test_collator.py - DataCollatorForCompletionOnlyLM unit testleri."""
 
-import torch
 from transformers import AutoTokenizer
 
 from tool_calling_ft.training.collator import DataCollatorForCompletionOnlyLM

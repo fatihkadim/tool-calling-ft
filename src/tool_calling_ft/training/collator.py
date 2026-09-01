@@ -6,7 +6,7 @@ guvenilir ve dinamik padding destekli collator implementasyonu.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import torch
 from transformers import PreTrainedTokenizerBase
@@ -28,9 +28,9 @@ class DataCollatorForCompletionOnlyLM:
         ignore_index: PyTorch CrossEntropyLoss icin maskeleme degeri (varsayilan: -100).
     """
 
-    response_template: Union[str, List[int]]
+    response_template: str | list[int]
     tokenizer: PreTrainedTokenizerBase
-    instruction_template: Optional[Union[str, List[int]]] = None
+    instruction_template: str | list[int] | None = None
     mlm: bool = False
     ignore_index: int = -100
 
@@ -53,8 +53,8 @@ class DataCollatorForCompletionOnlyLM:
             self.instruction_token_ids = None
 
     def torch_call(
-        self, examples: List[Union[List[int], Any, Dict[str, Any]]]
-    ) -> Dict[str, torch.Tensor]:
+        self, examples: list[list[int] | Any | dict[str, Any]]
+    ) -> dict[str, torch.Tensor]:
         """Batch orneklerini dinamik olarak pad eder ve assistant-only labels uretir."""
         batch = self.tokenizer.pad(
             examples,
@@ -107,6 +107,6 @@ class DataCollatorForCompletionOnlyLM:
         return batch
 
     def __call__(
-        self, examples: List[Union[List[int], Any, Dict[str, Any]]]
-    ) -> Dict[str, torch.Tensor]:
+        self, examples: list[list[int] | Any | dict[str, Any]]
+    ) -> dict[str, torch.Tensor]:
         return self.torch_call(examples)

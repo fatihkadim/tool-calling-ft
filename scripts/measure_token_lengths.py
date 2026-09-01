@@ -12,7 +12,6 @@ Kullanım: uv run python scripts/measure_token_lengths.py
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -123,12 +122,12 @@ def main():
         print(f"  Min: {stats['min']}, Max: {stats['max']}, Mean: {stats['mean']}")
         print(f"  P50: {stats['p50']}, P90: {stats['p90']}, P95: {stats['p95']}, P99: {stats['p99']}")
 
-        print(f"\\n  Threshold Analizi:")
+        print("\\n  Threshold Analizi:")
         for k, v in result["threshold_analysis"].items():
             print(f"    {k}: {v['fits']} sigar ({v['fits_pct']}%), {v['truncated']} kesilir ({v['truncated_pct']}%)")
 
         if result["tool_call_truncation"]:
-            print(f"\\n  <tool_call> Truncation (pozitif ornekler):")
+            print("\\n  <tool_call> Truncation (pozitif ornekler):")
             for k, v in result["tool_call_truncation"].items():
                 print(
                     f"    {k}: {v['tool_calls_lost']}/{v['total_positive']} tool_call kaybedilir "

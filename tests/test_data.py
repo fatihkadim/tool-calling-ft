@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from tool_calling_ft.data.prepare_dataset import (
     build_negative_examples,
     format_chatml,
@@ -211,8 +209,7 @@ def test_dataset_pipeline_end_to_end(tmp_path: Path):
     ]
 
     with open(raw_file, "w", encoding="utf-8") as f:
-        for item in sample_items:
-            f.write(json.dumps(item) + "\n")
+        f.writelines(json.dumps(item) + "\n" for item in sample_items)
 
     summary = prepare_and_process_dataset(
         raw_file=raw_file,

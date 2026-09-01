@@ -13,12 +13,16 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tool_calling_ft.data.tool_schema import extract_tool_names
 from tool_calling_ft.eval.metrics import ToolCallExample, aggregate_metrics
-from tool_calling_ft.utils.logging import count_trainable_params, save_metrics_report, track_vram_and_time
-from tqdm import tqdm
+from tool_calling_ft.utils.logging import (
+    count_trainable_params,
+    save_metrics_report,
+    track_vram_and_time,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,11 +31,37 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def resolve_torch_dtype(torch_dtype: str | torch.dtype = "auto") -> torch.dtype:
+    """T4 ve bfloat16 uyumluluğu gözeterek en uygun torch.dtype'ı seçer.
+
+    T4 gibi Turing mimarili GPU'lar bfloat16'yı donanımsal olarak desteklemez.
+    Bu durumda 'auto' modu güvenli olarak float16'ya geri döner.
+    """
+    if isinstance(torch_dtype, torch.dtype):
+        return torch_dtype
+
+    dtype_str = str(torch_dtype).lower().strip()
+    if dtype_str in ("float16", "fp16", "torch.float16"):
+        return torch.float16
+    elif dtype_str in ("bfloat16", "bf16", "torch.bfloat16"):
+        return torch.bfloat16
+    elif dtype_str in ("float32", "fp32", "torch.float32"):
+        return torch.float32
+
+    # "auto" veya tanımlanamayan değer:
+    if torch.cuda.is_available():
+        if hasattr(torch.cuda, "is_bf16_supported") and torch.cuda.is_bf16_supported():
+            return torch.bfloat16
+        return torch.float16
+    return torch.float32
+
+
 def load_model_and_tokenizer(
     model_name_or_path: str = "Qwen/Qwen2.5-0.5B",
     adapter_path: str | Path | None = None,
     device: str = "auto",
     torch_dtype: str | torch.dtype = "auto",
+    load_in_4bit: bool = False,
 ) -> tuple[Any, Any]:
     """Base modeli veya adapter yüklenmiş fine-tune modelini ve tokenizer'ı yükler."""
     logger.info("Tokenizer yükleniyor: %s", model_name_or_path)
@@ -40,12 +70,36 @@ def load_model_and_tokenizer(
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"
 
-    logger.info("Model yükleniyor: %s (device=%s, dtype=%s)", model_name_or_path, device, torch_dtype)
+    resolved_dtype = resolve_torch_dtype(torch_dtype)
+    logger.info(
+        "Model yükleniyor: %s (device=%s, dtype=%s, load_in_4bit=%s)",
+        model_name_or_path,
+        device,
+        resolved_dtype,
+        load_in_4bit,
+    )
+
+    model_kwargs: dict[str, Any] = {
+        "trust_remote_code": True,
+    }
+    if torch.cuda.is_available():
+        model_kwargs["device_map"] = device
+
+    if load_in_4bit:
+        from transformers import BitsAndBytesConfig
+
+        model_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=resolved_dtype,
+            bnb_4bit_use_double_quant=True,
+        )
+    else:
+        model_kwargs["torch_dtype"] = resolved_dtype
+
     model = AutoModelForCausalLM.from_pretrained(
         model_name_or_path,
-        torch_dtype=torch_dtype if torch_dtype != "auto" else (torch.bfloat16 if torch.cuda.is_available() else torch.float32),
-        device_map=device if torch.cuda.is_available() else None,
-        trust_remote_code=True,
+        **model_kwargs,
     )
 
     if adapter_path:
@@ -162,11 +216,16 @@ def run_eval(
     max_samples: int | None = None,
     batch_size: int = 4,
     output_dir: str | Path = "reports",
+    torch_dtype: str | torch.dtype = "auto",
+    load_in_4bit: bool | None = None,
 ) -> dict[str, Any]:
     """Tam değerlendirme sürecini çalıştırır ve rapor kaydeder."""
     dataset_file = Path(dataset_path)
     if not dataset_file.exists():
         raise FileNotFoundError(f"Değerlendirme veri seti bulunamadı: {dataset_file}")
+
+    if load_in_4bit is None:
+        load_in_4bit = (method_name.lower() == "qlora")
 
     samples: list[dict[str, Any]] = []
     with open(dataset_file, "r", encoding="utf-8") as f:
@@ -178,16 +237,20 @@ def run_eval(
         samples = samples[:max_samples]
 
     logger.info(
-        "Değerlendirme başlatılıyor: method='%s', dataset='%s' (%d örnek)",
+        "Değerlendirme başlatılıyor: method='%s', dataset='%s' (%d örnek, load_in_4bit=%s, dtype=%s)",
         method_name,
         dataset_file,
         len(samples),
+        load_in_4bit,
+        torch_dtype,
     )
 
     with track_vram_and_time(f"Eval: {method_name}") as vram_stats:
         model, tokenizer = load_model_and_tokenizer(
             model_name_or_path=model_name_or_path,
             adapter_path=adapter_path,
+            torch_dtype=torch_dtype,
+            load_in_4bit=load_in_4bit,
         )
         param_stats = count_trainable_params(model)
 
@@ -267,6 +330,26 @@ def main() -> None:
         default=4,
         help="Inference batch boyutu",
     )
+    parser.add_argument(
+        "--torch-dtype",
+        type=str,
+        default="auto",
+        choices=["auto", "float16", "bfloat16", "float32", "fp16", "bf16", "fp32"],
+        help="Model ağırlık veri tipi (varsayılan: auto - T4 için float16, A100 için bfloat16 seçer)",
+    )
+    parser.add_argument(
+        "--load-in-4bit",
+        dest="load_in_4bit",
+        action="store_true",
+        default=None,
+        help="Base modeli 4-bit (NF4) kuantizasyon ile yükle (QLoRA için varsayılan olarak otomatiktir)",
+    )
+    parser.add_argument(
+        "--no-4bit",
+        dest="load_in_4bit",
+        action="store_false",
+        help="4-bit kuantizasyonu zorla devre dışı bırak",
+    )
 
     args = parser.parse_args()
 
@@ -277,6 +360,8 @@ def main() -> None:
         method_name=args.method,
         max_samples=args.max_samples,
         batch_size=args.batch_size,
+        torch_dtype=args.torch_dtype,
+        load_in_4bit=args.load_in_4bit,
     )
 
     print("\n" + "=" * 50)
