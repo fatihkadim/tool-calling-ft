@@ -28,11 +28,18 @@ def load_config(config_path: str) -> dict:
 def build_model(config: dict):
     ft_method = config.get("method", "qlora")
 
+    # GPU ve mimari desteğine göre uygun veri tipini belirle (T4'te float16, A100'de bfloat16)
+    model_dtype = (
+        torch.bfloat16
+        if (torch.cuda.is_available() and torch.cuda.is_bf16_supported())
+        else torch.float16
+    )
+
     if ft_method == "lora":
         model = AutoModelForCausalLM.from_pretrained(
             config["base_model"],
             device_map="auto",
-            torch_dtype=torch.bfloat16,
+            torch_dtype=model_dtype,
         )
         lora_config = LoraConfig(
             r=config["lora"]["r"],
@@ -93,7 +100,7 @@ def build_model(config: dict):
         model = AutoModelForCausalLM.from_pretrained(
             config["base_model"],
             device_map="auto",
-            torch_dtype=torch.bfloat16,
+            torch_dtype=model_dtype,
         )
         dora_config = LoraConfig(
             r=config["lora"]["r"],
@@ -114,11 +121,8 @@ def build_model(config: dict):
         model = AutoModelForCausalLM.from_pretrained(
             config["base_model"],
             device_map="auto",
-            torch_dtype=torch.bfloat16,
+            torch_dtype=model_dtype,
         )
-        # Full FT'de base model zaten tamamen trainable, enable_input_require_grads
-        # gerekmez. 4GB VRAM'de dahi bu ayarlarla sinirda calisir; optimizer
-        # state'leri (Adam: momentum+variance) tek basina birkac GB tutabilir.
         model.gradient_checkpointing_enable()
         model.config.use_cache = False
         return model, config
@@ -211,9 +215,11 @@ def build_trainer(model, config: dict):
     tokenized_train = tokenized["train"]
     tokenized_val = tokenized["val"]
 
-    use_bf16 = torch.cuda.is_available() and config.get("quantization", {}).get(
-        "bnb_4bit_compute_dtype"
-    ) != "float16"
+    use_bf16 = (
+        torch.cuda.is_available()
+        and torch.cuda.is_bf16_supported()
+        and config.get("quantization", {}).get("bnb_4bit_compute_dtype") != "float16"
+    )
 
     # Config'ten opsiyonel degerler al, yoksa mantikli varsayilan kullan
     save_steps = config["training"].get("save_steps", 100)
@@ -242,6 +248,8 @@ def build_trainer(model, config: dict):
         warmup_steps=warmup_steps,
         bf16=use_bf16,
         fp16=not use_bf16 and torch.cuda.is_available(),
+        gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
         report_to="none",
     )
 

@@ -5,9 +5,11 @@ dataset: NousResearch/hermes-function-calling-v1
 output_dir: checkpoints/full_ft
 
 training:
-  epochs: 2
-  batch_size: 2
+  epochs: 3
+  batch_size: 1
   grad_accum_steps: 8
-  learning_rate: 5e-6
-  max_seq_len: 1024
+  learning_rate: 2e-5
+  max_seq_len: 2048
+  warmup_ratio: 0.05
+  save_steps: 200
   seed: 42
