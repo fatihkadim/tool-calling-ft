@@ -81,6 +81,19 @@ def test_parse_tool_calls_from_text():
     assert len(bare_calls) == 1
     assert bare_calls[0]["name"] == "calc"
 
+    # Fallback: JSON arkasından metin gelmesi (Sample 4 durumu)
+    trailing_text = '\n{"name": "calc", "arguments": {"x": 42}}\nThis was calculated automatically.'
+    trailing_calls = parse_tool_calls_from_text(trailing_text)
+    assert len(trailing_calls) == 1
+    assert trailing_calls[0]["name"] == "calc"
+    assert trailing_calls[0]["arguments"] == {"x": 42}
+
+    # Fallback: Markdown ```json ... ``` bloğu
+    md_text = '```json\n{"name": "fetch_data", "arguments": {"id": 10}}\n```'
+    md_calls = parse_tool_calls_from_text(md_text)
+    assert len(md_calls) == 1
+    assert md_calls[0]["name"] == "fetch_data"
+
     # Boş string
     assert parse_tool_calls_from_text("") == []
 

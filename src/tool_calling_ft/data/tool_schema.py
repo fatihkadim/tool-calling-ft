@@ -233,11 +233,46 @@ def parse_tool_calls_from_text(
         if parsed and parsed.get("name"):
             tool_calls.append(parsed)
 
-    # Fallback: Eğer XML tag'i unutulmuş ama direkt JSON {"name": ..., "arguments": ...} üretilmişse
+    # 1. Fallback: Markdown kod blokları (```json ... ``` veya ``` ... ```)
+    if not tool_calls:
+        code_blocks = re.findall(r"```(?:json)?\s*({.*?})\s*```", response_text, flags=re.DOTALL)
+        for block in code_blocks:
+            parsed = parse_single_tool_call_payload(block, available_tools=available_tools)
+            if parsed and parsed.get("name"):
+                tool_calls.append(parsed)
+
+    # 2. Fallback: Metin içinde serbest dolaşan JSON sözlüklerini ({...}) tara
+    if not tool_calls:
+        decoder = json.JSONDecoder()
+        pos = 0
+        while pos < len(response_text):
+            brace_idx = response_text.find("{", pos)
+            if brace_idx == -1:
+                break
+            try:
+                obj, end_idx = decoder.raw_decode(response_text[brace_idx:])
+                if isinstance(obj, dict) and ("name" in obj or "arguments" in obj or available_tools):
+                    parsed = parse_single_tool_call_payload(
+                        response_text[brace_idx : brace_idx + end_idx],
+                        available_tools=available_tools,
+                    )
+                    if parsed and parsed.get("name"):
+                        tool_calls.append(parsed)
+                    pos = brace_idx + end_idx
+                else:
+                    pos = brace_idx + 1
+            except json.JSONDecodeError:
+                pos = brace_idx + 1
+
+    # 3. Fallback: Eğer XML tag'i unutulmuş ve Python dict literal ({'name': ...}) kullanılmışsa
     if not tool_calls:
         trimmed = response_text.strip()
-        if trimmed.startswith("{") and trimmed.endswith("}"):
-            parsed = parse_single_tool_call_payload(trimmed, available_tools=available_tools)
+        # Eğer tek parça süslü parantez varsa
+        first_brace = trimmed.find("{")
+        last_brace = trimmed.rfind("}")
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            candidate = trimmed[first_brace : last_brace + 1]
+            parsed = parse_single_tool_call_payload(candidate, available_tools=available_tools)
             if parsed and parsed.get("name"):
                 tool_calls.append(parsed)
 

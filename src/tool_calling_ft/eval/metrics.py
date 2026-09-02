@@ -26,13 +26,43 @@ class ToolCallExample:
 
 
 def extract_raw_tool_call_json(raw: str) -> list[str]:
-    """Model çıktısındaki <tool_call> bloklarının içindeki ham metinleri çıkarır."""
+    """Model çıktısındaki <tool_call> bloklarının veya gömülü JSON'ların içindeki ham metinleri çıkarır."""
+    # Açılış etiketi var ama kapanış etiketi yoksa (malformed)
+    if "<tool_call>" in raw and raw.count("<tool_call>") != raw.count("</tool_call>"):
+        return []
+
     pattern = r"<tool_call>\s*(.*?)\s*</tool_call>"
     matches = re.findall(pattern, raw, flags=re.DOTALL)
     if matches:
         return [m.strip() for m in matches]
 
-    # Eğer XML tag'i yoksa ama süslü parantezle başlıyorsa
+    # 1. Markdown kod blokları (```json ... ``` veya ``` ... ```)
+    code_blocks = re.findall(r"```(?:json)?\s*({.*?})\s*```", raw, flags=re.DOTALL)
+    if code_blocks:
+        return [b.strip() for b in code_blocks]
+
+    # 2. Metin içinde serbest dolaşan JSON sözlükleri
+    decoder = json.JSONDecoder()
+    pos = 0
+    extracted = []
+    while pos < len(raw):
+        brace_idx = raw.find("{", pos)
+        if brace_idx == -1:
+            break
+        try:
+            obj, end_idx = decoder.raw_decode(raw[brace_idx:])
+            if isinstance(obj, dict) and ("name" in obj or "arguments" in obj):
+                extracted.append(raw[brace_idx : brace_idx + end_idx].strip())
+                pos = brace_idx + end_idx
+            else:
+                pos = brace_idx + 1
+        except json.JSONDecodeError:
+            pos = brace_idx + 1
+
+    if extracted:
+        return extracted
+
+    # 3. Eğer XML tag'i yoksa ama süslü parantezle başlıyorsa
     trimmed = raw.strip()
     if trimmed.startswith("{") and trimmed.endswith("}"):
         return [trimmed]
@@ -46,6 +76,9 @@ def is_valid_json(raw: str, expected_tool: str | None = None) -> bool:
     - Eğer expected_tool yoksa (negatif örnek) ve model düz metin dönmüşse → True.
     - Malformed tool_call tag'i varsa → False.
     """
+    if "<tool_call>" in raw and raw.count("<tool_call>") != raw.count("</tool_call>"):
+        return False
+
     json_blocks = extract_raw_tool_call_json(raw)
     if not json_blocks:
         # Tool call etiketi yoksa ve kullanıcıya düz metin yanıt verilmişse

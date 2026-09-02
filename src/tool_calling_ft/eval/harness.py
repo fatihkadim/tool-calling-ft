@@ -163,6 +163,7 @@ def run_inference_on_samples(
                 attention_mask=attention_mask,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
+                repetition_penalty=1.1,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=stop_token_ids,
             )
@@ -176,9 +177,11 @@ def run_inference_on_samples(
             total_generated_tokens += len(gen_tokens)
 
             gen_text = tokenizer.decode(gen_tokens, skip_special_tokens=False)
-            # <|im_end|> sonrası metni temizle
-            if "<|im_end|>" in gen_text:
-                gen_text = gen_text.split("<|im_end|>")[0].strip()
+            # Stop token'lar ve batch padding sonrası metni temizle
+            for stop_tag in ("<|im_end|>", "<|endoftext|>"):
+                if stop_tag in gen_text:
+                    gen_text = gen_text.split(stop_tag)[0]
+            gen_text = gen_text.strip()
 
             known_tools_set = set(extract_tool_names(item.get("tools", [])))
             example = ToolCallExample(

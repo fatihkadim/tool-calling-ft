@@ -19,16 +19,21 @@ logger = logging.getLogger(__name__)
 
 
 def count_trainable_params(model: torch.nn.Module) -> dict[str, Any]:
-    """Modeldeki toplam, eğitilebilir (trainable) parametre sayısını ve oranını hesaplar."""
+    """Modeldeki toplam, eğitilebilir (trainable) ve LoRA parametre sayısını hesaplar."""
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     all_params = sum(p.numel() for p in model.parameters())
     trainable_pct = (trainable_params / all_params * 100.0) if all_params > 0 else 0.0
 
-    return {
+    lora_params = sum(p.numel() for name, p in model.named_parameters() if "lora_" in name)
+
+    stats: dict[str, Any] = {
         "trainable_params": trainable_params,
         "all_params": all_params,
         "trainable_percentage": round(trainable_pct, 4),
     }
+    if lora_params > 0:
+        stats["lora_params"] = lora_params
+    return stats
 
 
 def get_gpu_memory_mb() -> dict[str, float]:

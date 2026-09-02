@@ -237,3 +237,70 @@ def test_load_model_and_tokenizer_mock():
             call_kwargs = mock_lm.call_args.kwargs
             assert "quantization_config" in call_kwargs
             assert call_kwargs["quantization_config"].load_in_4bit is True
+
+
+def test_run_eval_recovers_sample_4(tmp_path: Path):
+    """Run 1 Sample 4 gibi XML etiketi olmayan ve arkasında açıklama bulunan çıktılar run_eval'de kurtarılmalı."""
+    sample_item = {
+        "system": "System prompt",
+        "user": "Set up webhook",
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "create_task_completed_webhook",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"planner_id": {"type": "string"}, "task_id": {"type": "string"}},
+                    },
+                },
+            }
+        ],
+        "expected_tool": "create_task_completed_webhook",
+        "expected_arguments": {"planner_id": "abc123", "task_id": "task456"},
+    }
+    eval_file = tmp_path / "eval.jsonl"
+    with open(eval_file, "w", encoding="utf-8") as f:
+        f.write(json.dumps(sample_item) + "\n")
+
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir()
+
+    mock_model = MagicMock()
+    mock_model.device = torch.device("cpu")
+    dummy_param = torch.nn.Parameter(torch.zeros(1))
+    mock_model.parameters.side_effect = lambda: iter([dummy_param])
+
+    mock_tok = MagicMock()
+    mock_tok.pad_token_id = 0
+    mock_tok.eos_token_id = 1
+    mock_tok.convert_tokens_to_ids.return_value = 151645
+    mock_tok.return_value = {
+        "input_ids": torch.tensor([[1, 2, 3]]),
+        "attention_mask": torch.tensor([[1, 1, 1]]),
+    }
+    mock_model.generate.return_value = torch.tensor([[1, 2, 3, 4, 5]])
+    # Sample 4 ham çıktısı (etiketsiz, trailing metinli, padding'li)
+    mock_tok.decode.return_value = (
+        '\n{"name": "create_task_completed_webhook", "arguments": {"planner_id": "abc123", "task_id": "task456"}}\n'
+        '>manual\n(Have a look at documentation)<|endoftext|><|endoftext|>'
+    )
+
+    with patch(
+        "tool_calling_ft.eval.harness.load_model_and_tokenizer",
+        return_value=(mock_model, mock_tok),
+    ):
+        report = run_eval(
+            model_name_or_path="dummy-model",
+            dataset_path=eval_file,
+            method_name="sample4_test",
+            output_dir=report_dir,
+        )
+
+    assert report["quality_metrics"]["tool_selection_accuracy"] == 1.0
+    assert report["quality_metrics"]["positive_tool_selection_accuracy"] == 1.0
+    assert report["quality_metrics"]["argument_accuracy"] == 1.0
+    assert report["quality_metrics"]["positive_argument_accuracy"] == 1.0
+    assert report["quality_metrics"]["json_validity_rate"] == 1.0
+    # Stop token temizliği kontrolü: <|endoftext|> silinmiş olmalı
+    assert "<|endoftext|>" not in report["sample_predictions"][0]["predicted_raw"]

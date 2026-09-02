@@ -319,3 +319,46 @@ def test_aggregate_metrics_with_known_tools_override():
     metrics = aggregate_metrics([ex], global_known)
     # tool_x, ex.known_tools'ta var → invalid olmamalı
     assert metrics["invalid_tool_call_rate"] == 0.0
+
+
+def test_parse_embedded_json_with_trailing_text_sample_4():
+    """Run 1 Sample 4: Model XML etiketi olmadan doğru JSON üretip arkasına metin ve padding eklediğinde doğru ayrıştırılmalı."""
+    sample_4_raw = (
+        '\n{"name": "create_task_completed_webhook", "arguments": {"planner_id": "abc123", "task_id": "task456"}}\n'
+        ">manual\n"
+        "(Have a look at the documentation for more information on how to set up a webhook in Microsoft Planner.)"
+        "<|endoftext|><|endoftext|>"
+    )
+
+    # 1. JSON geçerli olmalı
+    assert is_valid_json(sample_4_raw, expected_tool="create_task_completed_webhook") is True
+
+    # 2. Tool seçimi doğru bulunmalı
+    ex = ToolCallExample(
+        predicted_raw=sample_4_raw,
+        expected_tool="create_task_completed_webhook",
+        expected_arguments={"planner_id": "abc123", "task_id": "task456"},
+    )
+    assert tool_selection_correct(ex) is True
+
+    # 3. Argümanlar tam eşleşmeli
+    assert argument_accuracy(ex) == 1.0
+
+
+def test_parse_markdown_code_block():
+    """Markdown ```json ... ``` bloğu içindeki tool call başarıyla çıkarılmalı."""
+    raw = (
+        "Here is the function call:\n"
+        "```json\n"
+        '{"name": "get_weather", "arguments": {"location": "Ankara"}}\n'
+        "```\n"
+        "Hope this helps!"
+    )
+    ex = ToolCallExample(
+        predicted_raw=raw,
+        expected_tool="get_weather",
+        expected_arguments={"location": "Ankara"},
+    )
+    assert is_valid_json(raw, expected_tool="get_weather") is True
+    assert tool_selection_correct(ex) is True
+    assert argument_accuracy(ex) == 1.0
