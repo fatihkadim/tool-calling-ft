@@ -52,7 +52,12 @@ def build_model(config: dict):
         # base model dondurulmus oldugu icin checkpointing'in backward'i
         # calismasi icin bu gerekli (yoksa "does not require grad" hatasi alinir)
         lora_model.enable_input_require_grads()
-        lora_model.gradient_checkpointing_enable()
+        try:
+            lora_model.gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs={"use_reentrant": False}
+            )
+        except TypeError:
+            lora_model.gradient_checkpointing_enable()
         lora_model.config.use_cache = False
         lora_model.print_trainable_parameters()
         return lora_model, config
@@ -112,7 +117,12 @@ def build_model(config: dict):
         )
         dora_model = get_peft_model(model, dora_config)
         dora_model.enable_input_require_grads()
-        dora_model.gradient_checkpointing_enable()
+        try:
+            dora_model.gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs={"use_reentrant": False}
+            )
+        except TypeError:
+            dora_model.gradient_checkpointing_enable()
         dora_model.config.use_cache = False
         dora_model.print_trainable_parameters()
         return dora_model, config
@@ -147,6 +157,19 @@ def build_trainer(model, config: dict):
     """
     from tool_calling_ft.training.collator import DataCollatorForCompletionOnlyLM
 
+    from pathlib import Path
+    train_file = Path("data/processed/train.jsonl")
+    val_file = Path("data/processed/val.jsonl")
+    if not train_file.exists() or not val_file.exists():
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "data/processed/train.jsonl veya val.jsonl bulunamadi! "
+            "Otomatik olarak prepare_and_process_dataset() calistiriliyor..."
+        )
+        from tool_calling_ft.data.prepare_dataset import prepare_and_process_dataset
+        prepare_and_process_dataset()
+
     tokenizer = AutoTokenizer.from_pretrained(config["base_model"])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -154,8 +177,8 @@ def build_trainer(model, config: dict):
     dataset = load_dataset(
         "json",
         data_files={
-            "train": "data/processed/train.jsonl",
-            "val": "data/processed/val.jsonl",
+            "train": str(train_file),
+            "val": str(val_file),
         },
     )
 
@@ -261,14 +284,19 @@ def build_trainer(model, config: dict):
         tokenizer=tokenizer,
     )
 
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=tokenized_train,
-        eval_dataset=tokenized_val,
-        data_collator=collator,
-    )
+    trainer_kwargs = {
+        "model": model,
+        "args": training_args,
+        "train_dataset": tokenized_train,
+        "eval_dataset": tokenized_val,
+        "data_collator": collator,
+    }
+    try:
+        trainer = Trainer(**trainer_kwargs, processing_class=tokenizer)
+    except TypeError:
+        trainer = Trainer(**trainer_kwargs, tokenizer=tokenizer)
 
+    trainer.tokenizer = tokenizer
     return trainer
 
 
@@ -282,6 +310,8 @@ def main():
     trainer = build_trainer(model, config)
     trainer.train()
     trainer.save_model(config["output_dir"])
+    if hasattr(trainer, "tokenizer") and trainer.tokenizer is not None:
+        trainer.tokenizer.save_pretrained(config["output_dir"])
 
 
 if __name__ == "__main__":

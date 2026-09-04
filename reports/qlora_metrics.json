@@ -1,0 +1,88 @@
+{
+  "method": "qlora",
+  "base_model": "Qwen/Qwen2.5-0.5B",
+  "adapter_path": "checkpoints/qlora",
+  "dataset_path": "data/processed/eval_subset.jsonl",
+  "quality_metrics": {
+    "total_examples": 100,
+    "tool_required_count": 80,
+    "no_tool_required_count": 20,
+    "tool_selection_accuracy": 0.54,
+    "argument_accuracy": 0.4698,
+    "json_validity_rate": 0.57,
+    "invalid_tool_call_rate": 0.01,
+    "positive_tool_selection_accuracy": 0.4625,
+    "positive_argument_accuracy": 0.3748,
+    "positive_json_validity": 0.4625,
+    "negative_rejection_accuracy": 0.85,
+    "unnecessary_tool_call_rate": 0.15
+  },
+  "performance_metrics": {
+    "total_samples": 100,
+    "total_generated_tokens": 25600,
+    "total_generation_seconds": 693.93,
+    "throughput_tokens_per_sec": 36.89,
+    "latency_ms_per_sample": 6939.34,
+    "description": "Eval: qlora",
+    "elapsed_seconds": 700.0538,
+    "peak_vram_mb": 8415.84
+  },
+  "parameter_stats": {
+    "trainable_params": 0,
+    "all_params": 317282176,
+    "trainable_percentage": 0.0,
+    "lora_params": 2162688
+  },
+  "sample_predictions": [
+    {
+      "predicted_raw": "The Mona Lisa was painted by Leonardo da Vinci between 1506 and 1508, and it is currently displayed in the Louvre Museum in Paris. sourceMappingUrl\nGenerated sourceMappingUrl\nTo generate a sourceMappingUrl, you would need to provide a URL or link to a website containing the information about the source of the data. However, if you have a specific URL, please provide it so I can retrieve and display it accurately.jection\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt\nToInt",
+      "expected_tool": null,
+      "expected_arguments": null
+    },
+    {
+      "predicted_raw": "�\n{\"name\": \"find_astronomy_apps\", \"arguments\": {\"features\": [\"real-time celestial data\", \"constellation mapping\"], \"user_location\": \"34.0522N,118.2437W\"}}\n_Parms\n norge\n norge\n{\"name\": \"get_celestial_event_info\", \"arguments\": {\"location\": \"34.0522N,118.2437W\"}}\n_Parms\nsteder\nsteder\n{\"name\": \"get_constellation_info\", \"arguments\": {\"location\": \"34.0522N,118.2437W\", \"date_time\": \"2023-04-15\"}}\n_Parms\n看查看\noc\noc\n{\"name\": \"find_astronomy_apps\", \"arguments\": {\"features\": [\"real-time celestial data\", \"constellation mapping\"], \"user_location\": \"34.0522N,118.2437W\"}}\n_Parms\nämpfe\noc\noc\n{\"name\": \"get_celestial_event_info\", \"arguments\": {\"location\": \"34.0522N,118.2437W",
+      "expected_tool": "find_astronomy_apps",
+      "expected_arguments": {
+        "features": [
+          "real-time data",
+          "constellation mapping",
+          "augmented reality",
+          "educational"
+        ],
+        "user_location": "34.0522,-118.2437"
+      }
+    },
+    {
+      "predicted_raw": "�\n{\"name\": \"fetch_movie_reviews\", \"arguments\": {\"movie_title\": \"Dune\", \"limit\": 5}}\nIntoConstraints\n_Parms\n{\"name\": \"fetch_artist_details\", \"arguments\": {\"artist_name\": \"Timothée Chalamet\"}}\nPostalCodes\naxes\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG\n<=$\n$LANG",
+      "expected_tool": "fetch_movie_reviews",
+      "expected_arguments": {
+        "movie_title": "Dune",
+        "limit": 5
+      }
+    },
+    {
+      "predicted_raw": "눇\n{\"name\": \"create_task_completed_webhook\", \"arguments\": {\"planner_id\": \"abc123\", \"task_id\": \"task456\"}}\n눇\n눇\n{\"name\": \"post_message_to_slack\", \"arguments\": {\"channel_id\": \"C01B237K2\", \"message_text\": \"A task has been marked as complete in Microsoft Planner.\"}}\n눇\n눇\n{\"name\": \"create_task_completed_webhook\", \"arguments\": {\"planner_id\": null, \"task_id\": \"task456\"}}\n눇\n눇\n{\"name\": \"post_message_to_slack\", \"arguments\": {\"channel_id\": \"C01B237K2\", \"message_text\": \"A task has been marked as complete in Microsoft Planner.\"}}\n눇\n눇\n{\"name\": \"create_task_completed_webhook\", \"arguments\": {\"planner_id\": null, \"task_id\": \"task456\"}}\n눇\n눇\n{\"name\": \"post_message_to_slack\", \"arguments\": {\"channel_id\": \"C01B237K2\", \"message_text\": \"A task has been marked as complete in Microsoft Planner.\"}}\n눇\n눇\n{\"",
+      "expected_tool": "create_task_completed_webhook",
+      "expected_arguments": {
+        "planner_id": "abc123",
+        "task_id": "task456"
+      }
+    },
+    {
+      "predicted_raw": "�\n{\"name\": \"analyze_market_sentiment\", \"arguments\": {\"data_sources\": [\"Twitter\", \"Reddit\"], \"cryptocurrencies\": [\"Bitcoin\", \"Ethereum\", \"Ripple\"]}}\n��加\n_Parms\n norge\n$LANG\n$LANG\n{\"name\": \"predict_price_movements\", \"arguments\": {\"cryptocurrencies\": [\"Bitcoin\", \"Ethereum\", \"Ripple\"], \"prediction_model\": \"LinearRegression\", \"data_type\": \"real-time\"}}\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms\n_Parms",
+      "expected_tool": "analyze_market_sentiment",
+      "expected_arguments": {
+        "data_sources": [
+          "Twitter",
+          "Reddit",
+          "News Outlets"
+        ],
+        "cryptocurrencies": [
+          "Bitcoin",
+          "Ethereum",
+          "Ripple"
+        ]
+      }
+    }
+  ]
+}

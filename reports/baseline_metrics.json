@@ -1,0 +1,64 @@
+{
+  "method": "baseline",
+  "base_model": "Qwen/Qwen2.5-0.5B",
+  "adapter_path": null,
+  "dataset_path": "data\\processed\\eval_subset.jsonl",
+  "quality_metrics": {
+    "total_examples": 5,
+    "tool_selection_accuracy": 0.6,
+    "argument_accuracy": 0.6,
+    "json_validity_rate": 1.0,
+    "invalid_tool_call_rate": 0.0,
+    "unnecessary_tool_call_rate": 0.0,
+    "tool_required_count": 2,
+    "no_tool_required_count": 3
+  },
+  "performance_metrics": {
+    "total_samples": 5,
+    "total_generated_tokens": 1280,
+    "total_generation_seconds": 130.87,
+    "throughput_tokens_per_sec": 9.78,
+    "latency_ms_per_sample": 26174.85,
+    "description": "Eval: baseline",
+    "elapsed_seconds": 162.8731,
+    "peak_vram_mb": 0.0
+  },
+  "parameter_stats": {
+    "trainable_params": 494032768,
+    "all_params": 494032768,
+    "trainable_percentage": 100.0
+  },
+  "sample_predictions": [
+    {
+      "predicted_raw": "What is the boiling point of water at sea level?ITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView\nITableView",
+      "expected_tool": null,
+      "expected_arguments": null
+    },
+    {
+      "predicted_raw": "What is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools> </tools> XML tag?quine\nquine\nWhat is the purpose of the <tools>",
+      "expected_tool": null,
+      "expected_arguments": null
+    },
+    {
+      "predicted_raw": "{\"name\": \"set_smart_light_color\", \"arguments\": {\"room\": \"living room\", \"brightness\": \"dim\", \"color\": \"warm\"}}\nLETE<|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|><|endoftext|>",
+      "expected_tool": "set_smart_light_color",
+      "expected_arguments": {
+        "room": "living room",
+        "brightness": "dim",
+        "color": "warm"
+      }
+    },
+    {
+      "predicted_raw": "{\n\"name\": \"create_board\",\n\"arguments\": {\n\"board_name\": \"Q2 Marketing Campaign\"\n}\n}\n埇\n{\n\"name\": \"add_lists_to_board\",\n\"arguments\": {\n\"board_id\": \"Q2 Marketing Campaign\",\n\"lists\": [\"Market Research\", \"Content Creation\", \"Social Media Strategy\", \"Ad Campaigns\"]\n}\n}\n埇\n{\n\"name\": \"assign_members_to_tasks\",\n\"arguments\": {\n\"board_id\": \"Q2 Marketing Campaign\",\n\"tasks\": [\"Market Research\", \"Content Creation\", \"Social Media Strategy\", \"Ad Campaigns\"],\n\"members\": [\"Alice\", \"Bob\", \"Charlie\"]\n}\n}\n埇\n{\n\"name\": \"create_board\",\n\"arguments\": {\n\"board_name\": \"Q2 Marketing Campaign\"\n}\n}\n埇\n{\n\"name\": \"add_lists_to_board\",\n\"arguments\": {\n\"board_id\": \"Q2 Marketing Campaign\",\n\"lists\": [\"Market Research\", \"Content Creation\", \"Social Media Strategy\", \"Ad Campaigns\"]\n}\n}\n埇\n{\n\"name\": \"assign_members_to_tasks\",\n\"arguments\": {\n\"board_id\": \"Q2 Marketing Campaign\",\n\"tasks\": [\"Market Research\", \"Content Creation\", \"Social Media Strategy\", \"Ad Campaigns\"],\n\"members\": [\"Alice\",",
+      "expected_tool": "create_board",
+      "expected_arguments": {
+        "board_name": "Q2 Marketing Campaign"
+      }
+    },
+    {
+      "predicted_raw": "What is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat is the difference between a function and a method?quine\nquine\nWhat",
+      "expected_tool": null,
+      "expected_arguments": null
+    }
+  ]
+}

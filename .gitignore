@@ -6,8 +6,11 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
-.venv
+# Virtual environments and caches
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.log
 
 # Data & model artifacts (large, don't commit)
 data/raw/*
@@ -22,11 +25,14 @@ wandb/
 mlruns/
 
 # Env / secrets
-.env
+.env*
+*.env
 
-# Reports (generated, keep folder only)
+# Reports (keep benchmark JSONs and markdown reports)
 reports/*
 !reports/.gitkeep
+!reports/*.json
+!reports/*.md
 
 1.md
 SPRINT_PLAN.md
