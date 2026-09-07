@@ -1,6 +1,32 @@
-# Tool Calling Fine-Tuning Benchmark
+<div align="center">
 
-**[🇬🇧 English](#english) | [🇹🇷 Türkçe](#türkçe)**
+# 🛠️ Tool Calling Fine-Tuning Benchmark
+
+<p align="center">
+  <b>LLM Tool Calling için Kapsamlı ve Yeniden Üretilebilir Fine-Tuning Benchmark Platformu</b><br>
+  <b>Systematic Benchmark for LoRA, QLoRA, DoRA & Full Fine-Tuning on Tool Calling</b>
+</p>
+
+<!-- Technology Badges - Row 1: Core Runtime & Deep Learning Frameworks -->
+[![Python](https://img.shields.io/badge/PYTHON-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/FRAMEWORK-PYTORCH_2.4+_(CUDA_12.8)-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Hugging Face](https://img.shields.io/badge/ECOSYSTEM-HUGGING_FACE-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)](https://huggingface.co/)
+<br>
+<!-- Technology Badges - Row 2: Optimization, PEFT & Training Engine -->
+[![Fine-Tuning Methods](https://img.shields.io/badge/FINE--TUNING-LORA_%7C_QLORA_%7C_DORA_%7C_FULL-0284C7?style=for-the-badge)](#experimental-design)
+[![Quantization](https://img.shields.io/badge/QUANTIZATION-BITSANDBYTES_4--BIT_NF4-16A34A?style=for-the-badge)](https://github.com/bitsandbytes-foundation/bitsandbytes)
+[![Training Engine](https://img.shields.io/badge/TRAINING-TRL_%2B_ACCELERATE-F97316?style=for-the-badge)](https://github.com/huggingface/trl)
+<br>
+<!-- Technology Badges - Row 3: Target Models, Benchmark Harness & Tooling -->
+[![Benchmark Models](https://img.shields.io/badge/MODELS-QWEN_2.5_%2B_SMOLLM2-06B6D4?style=for-the-badge)](#models)
+[![Evaluation Harness](https://img.shields.io/badge/BENCHMARK-5--AXIS_METRIC_HARNESS-7E22CE?style=for-the-badge)](#evaluation)
+[![Tooling](https://img.shields.io/badge/ENVIRONMENT-ASTRAL_UV_%2B_RUFF-0D9488?style=for-the-badge&logo=astral&logoColor=white)](https://github.com/astral-sh/uv)
+
+<br><br>
+
+**[🇬🇧 English](#english) • [🇹🇷 Türkçe](#türkçe)**
+
+</div>
 
 ---
 
