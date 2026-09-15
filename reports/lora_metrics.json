@@ -1,0 +1,68 @@
+{
+  "method": "lora",
+  "base_model": "Qwen/Qwen2.5-0.5B",
+  "adapter_path": "checkpoints/lora",
+  "dataset_path": "data/processed/eval_subset.jsonl",
+  "quality_metrics": {
+    "total_examples": 100,
+    "tool_required_count": 80,
+    "no_tool_required_count": 20,
+    "tool_selection_accuracy": 0.26,
+    "argument_accuracy": 0.2517,
+    "json_validity_rate": 0.29,
+    "invalid_tool_call_rate": 0.01,
+    "positive_tool_selection_accuracy": 0.0875,
+    "positive_argument_accuracy": 0.0771,
+    "positive_json_validity": 0.1125,
+    "negative_rejection_accuracy": 0.95,
+    "unnecessary_tool_call_rate": 0.05
+  },
+  "performance_metrics": {
+    "total_samples": 100,
+    "total_generated_tokens": 25600,
+    "total_generation_seconds": 752.84,
+    "throughput_tokens_per_sec": 34.0,
+    "latency_ms_per_sample": 7528.4,
+    "description": "Eval: lora",
+    "elapsed_seconds": 759.4303,
+    "peak_vram_mb": 8921.89
+  },
+  "parameter_stats": {
+    "trainable_params": 0,
+    "all_params": 496195456,
+    "trainable_percentage": 0.0,
+    "lora_params": 2162688
+  },
+  "training_metrics": {
+    "train_loss": 0.6915,
+    "eval_loss": 0.9685,
+    "train_runtime_seconds": 16580.0,
+    "train_runtime_formatted": "4h 36m 20s",
+    "train_samples_per_second": 0.33,
+    "train_steps_per_second": 0.041,
+    "eval_runtime_seconds": 279.4,
+    "eval_samples_per_second": 1.145,
+    "eval_steps_per_second": 1.145,
+    "epochs": 3,
+    "total_steps": 684
+  },
+  "sample_predictions": [
+    {
+      "query": "What is the weather in Tokyo in celsius?",
+      "predicted_raw": "The weather in Tokyo is 12°C. sourceMapping\n\"\"\"\n,\n.createFrom(\"tools\")\n\"\"\"\n,\n.createFrom(\"functions\")\n\"\"\"\n,\nensors\n[['get_current_weather', {'arguments': ['location', 'unit']}], {'name': 'get_current_weather', 'arguments': ['location', 'unit']}]\n\"\"\"\n.createFrom(\"tools\")\n\"\"\"\n,\n.createFrom(\"functions\")\n\"\"\"\n,\nensors\n[['get_current_weather', {'arguments': ['city', 'unit']}], {'name': 'get_current_weather', 'arguments': ['city', 'unit']}]\n\"\"\"\n.createFrom(\"tools\")\n\"\"\"\n,\n.createFrom(\"functions\")\n\"\"\"\n,\nensors\n[['get_current_weather', {'arguments': ['country',",
+      "expected_tool": "get_current_weather",
+      "expected_arguments": {
+        "location": "Tokyo",
+        "unit": "celsius"
+      },
+      "comment": "Model direct natural language cevabi verip ardindan 'sourceMapping' ve JavaScript/TypeScript tensor benzeri sentetik halusinasyon kaliplari uretti. <tool_call> etiketini kullanmadi ve EOS token uretmeyerek max_tokens=256 sinirina dayandi."
+    },
+    {
+      "query": "What is the capital of France and what is it famous for?",
+      "predicted_raw": "The capital of France is Paris. It is known for its rich history, beautiful architecture, and vibrant cultural scene. sourceMapping",
+      "expected_tool": null,
+      "expected_arguments": null,
+      "comment": "Genel sohbet sorusunda tool cagirilmadi ve negatif ret basariyla calisti (negative_rejection_accuracy). Ancak metin sonunda 'sourceMapping' halusinasyonu goruldu."
+    }
+  ]
+}

@@ -63,7 +63,17 @@ def load_model_and_tokenizer(
     torch_dtype: str | torch.dtype = "auto",
     load_in_4bit: bool = False,
 ) -> tuple[Any, Any]:
-    """Base modeli veya adapter yüklenmiş fine-tune modelini ve tokenizer'ı yükler."""
+    """Base modeli veya adapter yüklenmiş fine-tune modelini ve tokenizer'ı yükler.
+
+    Args:
+        model_name_or_path: HuggingFace model adı veya yerel yol.
+        adapter_path: LoRA/QLoRA/DoRA adapter dizin yolu. None ise base model yüklenir.
+        device: Cihaz yerleşimi ('auto', 'cpu', 'cuda').
+        torch_dtype: Model ağırlık veri tipi. String ('auto', 'float16', 'bfloat16', 'float32')
+            veya torch.dtype nesnesi (torch.float16, torch.bfloat16) kabul eder.
+            'auto' ise GPU mimarisine göre otomatik seçim yapar (T4→float16, A100→bfloat16).
+        load_in_4bit: True ise base modeli 4-bit NF4 kuantizasyonla yükler (QLoRA eval için).
+    """
     logger.info("Tokenizer yükleniyor: %s", model_name_or_path)
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, trust_remote_code=True)
     if tokenizer.pad_token is None:

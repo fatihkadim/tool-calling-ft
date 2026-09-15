@@ -1,0 +1,88 @@
+{
+  "method": "dora",
+  "base_model": "Qwen/Qwen2.5-0.5B",
+  "adapter_path": "checkpoints/dora",
+  "dataset_path": "data/processed/eval_subset.jsonl",
+  "quality_metrics": {
+    "total_examples": 100,
+    "tool_required_count": 80,
+    "no_tool_required_count": 20,
+    "tool_selection_accuracy": 0.3,
+    "argument_accuracy": 0.283,
+    "json_validity_rate": 0.32,
+    "invalid_tool_call_rate": 0.01,
+    "positive_tool_selection_accuracy": 0.1375,
+    "positive_argument_accuracy": 0.1163,
+    "positive_json_validity": 0.15,
+    "negative_rejection_accuracy": 0.95,
+    "unnecessary_tool_call_rate": 0.05
+  },
+  "performance_metrics": {
+    "total_samples": 100,
+    "total_generated_tokens": 25600,
+    "total_generation_seconds": 864.92,
+    "throughput_tokens_per_sec": 29.6,
+    "latency_ms_per_sample": 8649.17,
+    "description": "Eval: dora",
+    "elapsed_seconds": 869.7871,
+    "peak_vram_mb": 8922.28
+  },
+  "parameter_stats": {
+    "trainable_params": 0,
+    "all_params": 496244608,
+    "trainable_percentage": 0.0,
+    "lora_params": 2211840
+  },
+  "sample_predictions": [
+    {
+      "predicted_raw": "The Mona Lisa was painted by Leonardo da Vinci between 1503 and 1506. It is currently housed at the Louvre Museum in Paris, France. sourceMapping\n référencer\nYou are a function calling AI model. You are provided with function signatures within <tools> </tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions.\n<tools>\n[{\"type\": \"function\", \"function\": {\"name\": \"ExpertQAExtractor\", \"description\": \"Extracts a list of questions that require making logical inferences based on the information in the document. These test understanding.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"inference_questions\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}}}}\n</tools>\n référencer\n référencer\nYou are a function calling AI model. You are given a question (q) and an array of possible answers (a). Your task is to determine if the answer is correct or incorrect based on the information in the question. If the answer is correct, return 'Correct'. If the answer is incorrect, return 'Incorrect'. If you cannot determine whether",
+      "expected_tool": null,
+      "expected_arguments": null
+    },
+    {
+      "predicted_raw": "\"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",\n \"\"\"\",",
+      "expected_tool": "find_astronomy_apps",
+      "expected_arguments": {
+        "features": [
+          "real-time data",
+          "constellation mapping",
+          "augmented reality",
+          "educational"
+        ],
+        "user_location": "34.0522,-118.2437"
+      }
+    },
+    {
+      "predicted_raw": "�\n{\"name\": \"fetch_movie_reviews\", \"arguments\": {\"movie_title\": \"Dune\", \"limit\": 5}}\nIntoConstraints\n_Parms\n{\"name\": \"fetch_artist_details\", \"arguments\": {\"artist_name\": \"Timothée Chalamet\"}}\nPostalCodes\n{\"name\": \"fetch_box_office_figures\", \"arguments\": {\"movie_title\": \"Dune\", \"date_range\": {\"start_date\": \"2023-01-01\", \"end_date\": \"2023-04-30\"}}}\nFilterWhere\n DERP\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW\nELLOW",
+      "expected_tool": "fetch_movie_reviews",
+      "expected_arguments": {
+        "movie_title": "Dune",
+        "limit": 5
+      }
+    },
+    {
+      "predicted_raw": "norge\n절차 ل Initializing webhook و تفعيله في Microsoft Planner :\n1. اختر سجل planner الخاص بك من الملفات الموجودة في الملفات المخصصة للمراسلات.\n2. اختر taskId الخاص بك من الملفات الموجودة في الملفات المخصصة للمراسلات.\n3. اختر سجل Slack الخاص بك من الملفات الموجودة في الملفات المخصصة للمراسلات.\n4. اختر سجل webhook الخاص بك من الملفات الموجودة في الملفات المخصصة للمراسلات.\n5. ادخل بيانات webhook في السحول الخاصة بـ planning_id و task_id.\n6. انقر على زر \"Add webhook\" في المربع القائمة، ثم اختر \"Webhook URL\".\n7. انقر على زر \"Save changes\" لإضافة webhook إلى planner.\n8. انقر على زر \"Add webhook\" في المربع القائمة، ثم اختر \"Webhook URL\".\n9. انقر على زر \"Save changes\" لإضافة webhook إلى planner.\n10. انقر على زر \"Add webhook\" في المربع القائمة، ثم اختر \"Webhook",
+      "expected_tool": "create_task_completed_webhook",
+      "expected_arguments": {
+        "planner_id": "abc123",
+        "task_id": "task456"
+      }
+    },
+    {
+      "predicted_raw": "_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:\n_Parms:",
+      "expected_tool": "analyze_market_sentiment",
+      "expected_arguments": {
+        "data_sources": [
+          "Twitter",
+          "Reddit",
+          "News Outlets"
+        ],
+        "cryptocurrencies": [
+          "Bitcoin",
+          "Ethereum",
+          "Ripple"
+        ]
+      }
+    }
+  ]
+}
