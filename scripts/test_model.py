@@ -25,7 +25,7 @@ if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
+    except (AttributeError, ValueError):
         pass
 
 # src dizinini path'e ekle
@@ -36,7 +36,6 @@ from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tool_calling_ft.data.tool_schema import (
-    DEFAULT_TOOLS,
     build_system_prompt,
     parse_tool_calls_from_text,
 )

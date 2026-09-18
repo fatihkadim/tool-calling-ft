@@ -138,7 +138,7 @@ def parse_tools(tools_data: str | list[dict[str, Any]]) -> list[dict[str, Any]]:
                     return parsed
                 if isinstance(parsed, dict):
                     return [parsed]
-            except Exception:
+            except (ValueError, SyntaxError, TypeError):
                 return []
     return []
 
@@ -177,14 +177,14 @@ def parse_single_tool_call_payload(
     # 1. json.loads (strict=False)
     try:
         obj = json.loads(s, strict=False)
-    except Exception:
+    except (json.JSONDecodeError, ValueError, TypeError):
         pass
 
     # 2. ast.literal_eval
     if obj is None:
         try:
             obj = ast.literal_eval(s)
-        except Exception:
+        except (ValueError, SyntaxError, TypeError):
             pass
 
     # 3. unescape ve ast.literal_eval
@@ -192,7 +192,7 @@ def parse_single_tool_call_payload(
         try:
             s_unescaped = s.replace("\\n", "\n").strip()
             obj = ast.literal_eval(s_unescaped)
-        except Exception:
+        except (ValueError, SyntaxError, TypeError):
             pass
 
     if isinstance(obj, dict):

@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import textwrap
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import torch
 import yaml
 
 from tool_calling_ft.training.collator import DataCollatorForCompletionOnlyLM
-
 
 # ─── Config Yükleme Testleri ───
 

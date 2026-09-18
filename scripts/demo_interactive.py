@@ -29,6 +29,7 @@ from tool_calling_ft.data.tool_schema import (
     parse_tool_calls_from_text,
 )
 
+
 # ─────────────────────────────────────────────────
 # Renk kodları (terminal çıktısı için)
 # ─────────────────────────────────────────────────
@@ -136,7 +137,7 @@ def load_model(adapter_name: str):
     return model, tokenizer, device
 
 
-def build_prompt(user_message: str, tools: list = None) -> str:
+def build_prompt(user_message: str, tools: list | None = None) -> str:
     """Hermes format ChatML prompt oluştur."""
     if tools is None:
         tools = DEFAULT_TOOLS

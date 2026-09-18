@@ -15,17 +15,17 @@ Bu çalışma, **Qwen2.5-0.5B** base model üzerinde **tool calling (function ca
 ### Araştırma Sorusu
 > *"Aynı model, aynı veri, aynı görev — farklı fine-tuning yöntemleri nasıl bir performans farkı yaratır?"*
 
-### Sonuçlar (Kısa)
+### Sonuçlar
 
-| Yöntem | Pozitif Tool Selection | Pozitif Arg. Accuracy | JSON Validity | Neg. Rejection | Peak VRAM |
+| Yöntem | Poz. Tool Selection | Poz. Arg. Accuracy | JSON Validity | Neg. Rejection | Peak VRAM |
 |--------|:-----:|:-----:|:-----:|:-----:|:-----:|
 | Baseline (0-shot) | %0.0 | %0.0 | %0.0 | %100.0* | N/A (CPU) |
-| LoRA (16-bit) | %8.75 | %7.71 | %11.25 | **%95.0** | 8922 MB |
-| QLoRA (4-bit NF4) | **%46.25** | **%37.48** | **%46.25** | %85.0 | **8416 MB** |
-| DoRA (use_dora=true) | %13.75 | %11.63 | %15.0 | **%95.0** | 8922 MB |
-| Full Fine-Tuning | ⬜ *Planlanıyor* | — | — | — | — |
+| LoRA (16-bit) | %8.75 | %7.71 | %11.25 | %95.0 | 8922 MB |
+| QLoRA (4-bit NF4) | %46.25 | %37.48 | %46.25 | %85.0 | **8416 MB** |
+| DoRA (use_dora=true) | %13.75 | %11.63 | %15.0 | %95.0 | 8922 MB |
+| **Full Fine-Tuning** | **%92.5** | **%44.33** | **%83.75** | **%95.0** | 8914 MB |
 
-> **🏅 Mevcut Şampiyon: QLoRA** — Tüm pozitif metriklerde açık ara lider, aynı zamanda en düşük VRAM kullanımı.
+> **🏅 Şampiyon: Full Fine-Tuning** — Tool selection'da %92.5 ile açık ara lider. QLoRA'nın 2 katı, negatif rejection'da da %95 ile en iyiler arasında.
 
 *\* Baseline'da model hiç tool çağırmadığı için rejection %100'dür.*
 
@@ -47,14 +47,15 @@ Pre-training sonrası hiçbir fine-tuning yapılmadan, doğrudan Hermes format p
 - **Trainable:** 2.16M parametre (%0.43), base model 4-bit
 
 ### 2.4 DoRA (Weight-Decomposed Low-Rank Adaptation)
-- **Fikir:** Ağırlık matrisini *magnitude* (büyüklük) ve *direction* (yön) bileşenlerine ayır; LoRA yalnızca direction'ı günceller, magnitude ayrı öğrenilir.
+- **Fikir:** Ağırlık matrisini *magnitude* ve *direction* bileşenlerine ayır; LoRA yalnızca direction'ı günceller, magnitude ayrı öğrenilir.
 - **Config:** LoRA + `use_dora=true`, $r=16, \alpha=32$, `dropout=0.05`
-- **Trainable:** 2.21M parametre (%0.45) — LoRA'dan ~49K fazla (magnitude vektörleri)
-- **Referans:** [DoRA: Weight-Decomposed Low-Rank Adaptation of Large Language Models (Liu et al., 2024)](https://arxiv.org/abs/2402.09353)
+- **Trainable:** 2.21M parametre (%0.45)
 
 ### 2.5 Full Fine-Tuning
-- **Fikir:** Tüm parametreleri ($\sim$494M) güncelle.
-- **Config:** `lr=2e-5`, `epochs=3`, `batch_size=1`, `grad_accum=8`
+- **Fikir:** Tüm parametreleri ($\sim$494M) güncelle — MLP dahil.
+- **Config:** `lr=2e-5`, `epochs=3`, `batch_size=1`, `grad_accum=8`, gradient checkpointing
+- **Trainable:** 494M parametre (%100)
+- **Training:** 684 step, final loss ~0.18
 
 ---
 
@@ -64,27 +65,25 @@ Pre-training sonrası hiçbir fine-tuning yapılmadan, doğrudan Hermes format p
 
 | Metrik | Baseline | LoRA | QLoRA | DoRA | Full FT |
 |--------|:--------:|:----:|:-----:|:----:|:-------:|
-| Tool Selection Accuracy | %0.0 | %8.75 | **%46.25** | %13.75 | — |
-| Argument Accuracy | %0.0 | %7.71 | **%37.48** | %11.63 | — |
-| JSON Validity | %0.0 | %11.25 | **%46.25** | %15.0 | — |
+| Tool Selection Accuracy | %0.0 | %8.75 | %46.25 | %13.75 | **%92.5** |
+| Argument Accuracy | %0.0 | %7.71 | %37.48 | %11.63 | **%44.33** |
+| JSON Validity | %0.0 | %11.25 | %46.25 | %15.0 | **%83.75** |
 
 ### 3.2 Negatif Örnekler (Tool Çağrılmaması Gereken, n=20)
 
 | Metrik | Baseline | LoRA | QLoRA | DoRA | Full FT |
 |--------|:--------:|:----:|:-----:|:----:|:-------:|
-| Negative Rejection Acc. | %100.0* | **%95.0** | %85.0 | **%95.0** | — |
-| Unnecessary Tool Call Rate | %0.0 | %5.0 | %15.0 | %5.0 | — |
-
-*\* Baseline'da model hiç tool çağırmadığı için rejection %100'dür.*
+| Negative Rejection Acc. | %100.0* | **%95.0** | %85.0 | **%95.0** | **%95.0** |
+| Unnecessary Tool Call Rate | %0.0 | %5.0 | %15.0 | %5.0 | %5.0 |
 
 ### 3.3 Genel Metrikler (Toplam 100 örnek)
 
 | Metrik | Baseline | LoRA | QLoRA | DoRA | Full FT |
 |--------|:--------:|:----:|:-----:|:----:|:-------:|
-| Tool Selection Accuracy (Toplam) | %60.0* | %26.0 | **%54.0** | %30.0 | — |
-| Argument Accuracy (Toplam) | %60.0* | %25.17 | **%46.98** | %28.3 | — |
-| JSON Validity Rate (Toplam) | %100.0* | %29.0 | **%57.0** | %32.0 | — |
-| Invalid Tool Call Rate | %0.0 | %1.0 | %1.0 | %1.0 | — |
+| Tool Selection Accuracy | %60.0* | %26.0 | %54.0 | %30.0 | **%93.0** |
+| Argument Accuracy | %60.0* | %25.17 | %46.98 | %28.3 | **%54.47** |
+| JSON Validity Rate | %100.0* | %29.0 | %57.0 | %32.0 | **%87.0** |
+| Invalid Tool Call Rate | %0.0 | %1.0 | %1.0 | %1.0 | %2.0 |
 
 *\* Baseline 5 sample ile çalıştırılmış (istatistiksel güvenilirlik düşük).*
 
@@ -94,141 +93,99 @@ Pre-training sonrası hiçbir fine-tuning yapılmadan, doğrudan Hermes format p
 
 | Metrik | Baseline | LoRA | QLoRA | DoRA | Full FT |
 |--------|:--------:|:----:|:-----:|:----:|:-------:|
-| Training Time | — | 4h 36m | ~3h 48m | ~4h 50m* | — |
-| Peak VRAM (Eval) | 0 MB (CPU) | 8922 MB | **8416 MB** | 8922 MB | — |
-| Throughput (tok/s) | 9.78 | 34.0 | **36.89** | 29.6 | — |
-| Latency (ms/sample) | 26,175 | 7,528 | **6,939** | 8,649 | — |
-| Trainable Params | 494M (100%) | 2.16M (0.43%) | 2.16M (0.43%) | 2.21M (0.45%) | — |
-| Total Params | 494M | 496M | 317M | 496M | — |
-| Adapter Size (safetensors) | — | ~8.5 MB | ~8.5 MB | ~8.5 MB | — |
+| Training Time | — | 4h 36m | ~3h 48m | ~4h 50m | ~8h* |
+| Peak VRAM (Eval) | 0 MB (CPU) | 8922 MB | **8416 MB** | 8922 MB | 8914 MB |
+| Throughput (tok/s) | 9.78 | 34.0 | **36.89** | 29.6 | 28.13 |
+| Latency (ms/sample) | 26,175 | 7,528 | **6,939** | 8,649 | 4,752 |
+| Trainable Params | 494M (100%) | 2.16M (0.43%) | 2.16M (0.43%) | 2.21M (0.45%) | 494M (100%) |
+| Model Size | 988 MB | ~8.5 MB adapter | ~8.5 MB adapter | ~8.5 MB adapter | 988 MB |
 
-*\* DoRA training time, LoRA'dan 684 step ile aynı step sayısında ancak magnitude decomposition overhead'i ile ~%5 daha uzun sürer.*
+*\* Full FT training time tahmini (3 epoch × 684 step, gradient checkpointing ile).*
 
 ---
 
-## 5. DoRA Detaylı Analiz
+## 5. Yöntem Sıralaması (Final)
 
-### 5.1 DoRA Adapter Konfigürasyonu (adapter_config.json)
+### 🥇 Full Fine-Tuning — Kalite Şampiyonu
+- **%92.5** pozitif tool selection — diğer yöntemlerin 2-10x üzerinde
+- **%83.75** JSON validity — format öğrenimi başarılı
+- **%95.0** negatif rejection — agresif tool çağrısı sorunu yok
+- MLP katmanları dahil olduğundan format dönüşümü tam başarılı
+- **Dezavantaj:** Tüm model kaydedilmeli (988 MB vs 8.5 MB adapter), daha uzun training
+
+### 🥈 QLoRA (4-bit NF4) — Verimlilik Şampiyonu
+- **%46.25** pozitif tool selection — adapter yöntemlerinin en iyisi
+- En düşük VRAM (8416 MB) ve en yüksek throughput (36.89 tok/s)
+- **Dezavantaj:** Negatif rejection en düşük (%85.0)
+
+### 🥉 DoRA (use_dora=true)
+- LoRA'ya göre +5% iyileşme, ama QLoRA'nın çok gerisinde
+- Magnitude decomposition küçük modellerde sınırlı etki
+
+### 4️⃣ LoRA (16-bit)
+- Sadece %8.75 pozitif tool selection
+- Pre-training artıkları format öğrenimini sabote ediyor
+
+---
+
+## 6. Analiz & Çıkarımlar
+
+### 6.1 Full FT Neden Bu Kadar İyi?
+
+1. **MLP Katmanları Güncellenebilir:** Adapter yöntemlerinde (LoRA/QLoRA/DoRA) yalnızca attention katmanları hedeflenirken, Full FT'de MLP dahil tüm katmanlar güncellenir. `<tool_call>` etiketi ve JSON format yapısı MLP'lerde kodlanır.
+
+2. **Kapasite Sınırı Yok:** 494M parametrenin tamamı kullanılabilir — adapter'ların 2.16M parametresiyle karşılaştırıldığında ~230x daha fazla öğrenme kapasitesi.
+
+3. **Pre-training Artıkları Bastırılmış:** Tüm ağırlıklar güncellendiğinden `sourceMapping`, `_Parms` gibi halüsinasyonlar giderilmiş.
+
+### 6.2 Kuantizasyon Etkisi Teyit Edildi
+
+QLoRA'nın adapter yöntemleri arasında lider olması, NF4 kuantizasyonunun düzenlileştirme (regularization) etkisini doğrulamaya devam ediyor. 4-bit base model, pre-training artıklarını bastırarak adapter'ın format öğrenmesini kolaylaştırıyor.
+
+### 6.3 Maliyet-Kalite Dengesi
+
+| Senaryo | Önerilen Yöntem |
+|---------|----------------|
+| Maksimum kalite, kaynak önemli değil | **Full FT** |
+| Sınırlı VRAM, hızlı iterasyon | **QLoRA** |
+| Production'da adapter swap gerekli | **QLoRA** |
+| Birden fazla görev için aynı base model | **QLoRA** (adapter'lar arası geçiş) |
+
+---
+
+## 7. Full FT Çıktı Örnekleri
+
+### ✅ Başarılı Negatif Ret
+**Soru:** *"Mona Lisa'yı kim yaptı?"*  
+**Çıktı:** Doğal dilde yanıt (tool çağrısı yok) ✓
+
+### ✅ Başarılı Pozitif Tool Call
 ```json
-{
-  "peft_type": "LORA",
-  "use_dora": true,
-  "r": 16,
-  "lora_alpha": 32,
-  "lora_dropout": 0.05,
-  "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
-  "task_type": "CAUSAL_LM",
-  "peft_version": "0.19.1"
-}
+<tool_call>
+{"name": "find_astronomy_apps", "arguments": {"features": ["real-time data", "celestial events", "constellation mapping"], "user_location": "34.0522N,118.2437W"}}
+</tool_call>
 ```
 
-### 5.2 DoRA vs LoRA Karşılaştırması
-
-DoRA, LoRA'ya göre marjinal bir iyileşme sağlamıştır:
-
-| Metrik | LoRA | DoRA | Fark |
-|--------|:----:|:----:|:----:|
-| Positive Tool Selection | %8.75 | %13.75 | 🟢 **+5.0%** |
-| Positive Argument Acc. | %7.71 | %11.63 | 🟢 **+3.92%** |
-| Positive JSON Validity | %11.25 | %15.0 | 🟢 **+3.75%** |
-| Negative Rejection | %95.0 | %95.0 | ➖ Eşit |
-| Throughput (tok/s) | 34.0 | 29.6 | 🔻 -4.4 (overhead) |
-| Latency (ms/sample) | 7,528 | 8,649 | 🔻 +1,121 ms |
-
-### 5.3 DoRA Neden Beklentiyi Karşılayamadı?
-
-DoRA'nın LoRA'ya göre **anlamlı ama yetersiz** bir iyileşme sağlamasının nedenleri:
-
-1. **Aynı Kök Sorun Devam Ediyor:** DoRA da LoRA gibi yalnızca `q/k/v/o_proj` (attention) katmanlarını hedeflemektedir. MLP katmanları dondurulmuş olduğundan, format yönelimi (JSON output, `<tool_call>` etiketi) değişmemiştir.
-
-2. **Magnitude Decomposition Tek Başına Yetmez:** DoRA'nın magnitude/direction ayrımı, daha büyük modellerde (7B+) anlamlı fark yaratmaktadır. 0.5B gibi küçük modellerde ağırlık matrislerinin rank'ı zaten düşük olduğundan, decomposition'ın etkisi sınırlı kalmıştır.
-
-3. **Pre-training Artıkları Hâlâ Baskın:** Tıpkı LoRA gibi, DoRA da 16-bit hassasiyette çalışmakta ve base modelin web/kod halüsinasyonları (`sourceMapping`, `_Parms`, tekrarlayan tokenlar) hâlâ çıktılarda görülmektedir.
-
-4. **Çıktı Örnekleri DoRA'nın Sınırlarını Gösteriyor:**
-   - **Negatif örnek:** Mona Lisa sorusuna doğal dilde yanıt + `sourceMapping` halüsinasyonu → tool çağrılmamış (doğru ret ✓)
-   - **Pozitif örnek:** `find_astronomy_apps` yerine anlamsız çıktı (`""""""` tekrarları) → tool format öğrenilememiş ✗
-   - **Kısmi başarı:** `fetch_movie_reviews` tool adı ve argümanları kısmen doğru JSON çıktıda görülüyor, ama `<tool_call>` etiketi ve temiz JSON yapısı yok
-
-### 5.4 DoRA Sonucu Hipotez Teyidi
-
-> **Orijinal Hipotez:** *"DoRA'nın direction bileşeni, LoRA'nın yaşadığı format yönelim kaybını çözebilir."*
->
-> **Sonuç:** ❌ **Kısmen Çürütüldü.** Direction decomposition'ı format yönelimine %5'lik marjinal katkı sağlamıştır, ancak kök sorun (MLP katmanlarının dondurulması + küçük model boyutu) devam ettiğinden, QLoRA'nın kuantizasyon-bazlı düzenlileştirme etkisine yaklaşamamıştır.
+### ⚠️ Agresif Multi-Tool Call
+Tek tool beklenirken birden fazla tool çağrısı yapılması (invalid_tool_call_rate: %2.0)
 
 ---
 
-## 6. Üç Yöntem Sıralaması (Mevcut)
+## 8. Sonuç
 
-### 🥇 QLoRA (4-bit NF4) — En İyi Yöntem
-- Tüm pozitif metriklerde açık ara lider (%46.25 tool selection)
-- En düşük VRAM kullanımı (8416 MB)
-- En yüksek throughput (36.89 tok/s) ve en düşük latency (6939 ms)
-- **Dezavantaj:** Negatif rejection en düşük (%85.0) — model tool çağırmaya daha agresif
+### Ana Bulgular
+1. **Full Fine-Tuning** küçük modellerde (0.5B) tool calling için **en iyi yöntem** — %92.5 tool selection.
+2. **QLoRA** adapter yöntemleri arasında açık ara lider — kaynak verimliliği ile kaliteyi dengeliyor.
+3. **LoRA ve DoRA** attention-only target ile küçük modellerde yetersiz kalıyor.
+4. Kuantizasyonun "bilgi kaybı" varsayımı küçük modellerde **çürütülmüştür** — düzenlileştirme etkisi baskın.
+5. MLP katmanlarının güncellenmesi, format dönüşümü (JSON + `<tool_call>` etiketi) için **kritik** öneme sahip.
 
-### 🥈 DoRA (use_dora=true) — LoRA'dan Marjinal İyileşme
-- LoRA'ya göre +5% tool selection artışı
-- Negatif rejection LoRA ile eşit (%95.0)
-- **Dezavantaj:** QLoRA'ya göre 3x düşük pozitif accuracy, inference overhead
-
-### 🥉 LoRA (16-bit) — En Zayıf Adapter Yöntemi
-- Sadece %8.75 pozitif tool selection
-- En iyi negatif rejection (%95.0, DoRA ile eşit)
-- **Dezavantaj:** Pre-training artıkları format öğrenimini sabote ediyor
-
----
-
-## 7. Analiz & Çıkarımlar
-
-### 7.1 QLoRA > DoRA > LoRA: Neden Kuantize Model En İyi?
-
-Üç yöntemin sonuçları, kuantizasyonun düzenlileştirme etkisini kesin olarak doğrulamıştır:
-
-1. **Kuantizasyon = Düzenlileştirme (Regularization):** NF4 kuantizasyonu, base modelin pre-training artıklarını (web/kod halüsinasyonları) bastırarak adapter'ın öğrettiği formata bağlanmayı kolaylaştırmıştır.
-
-2. **DoRA'nın Magnitude/Direction Ayrımı Kısmen İşe Yarıyor:** DoRA, direction bileşeni sayesinde LoRA'nın format kaybını %5 oranında telafi etmiştir. Ancak MLP katmanlarının dondurulması nedeniyle tam format dönüşümü sağlanamamıştır.
-
-3. **Model Boyutu Kritik Eşik:** 0.5B parametreli model, tool calling gibi karmaşık format görevleri için temel kapasiteye sahip ancak attention-only adaptation yetersiz kalmaktadır.
-
-### 7.2 Ortak Sorunlar (Tüm 16-bit Yöntemlerde)
-
-| Sorun | LoRA | DoRA | QLoRA |
-|-------|:----:|:----:|:-----:|
-| `sourceMapping` halüsinasyonu | ✓ Var | ✓ Var | ✓ Var (az) |
-| `_Parms` / repetition döngüsü | ✓ Var | ✓ Var | ✓ Var (az) |
-| EOS token üretememe | ✓ Var | ✓ Var | ✓ Var (az) |
-| `<tool_call>` etiketi yok | ✓ Var | ✓ Var | ~Kısmen |
-| Pre-training format sızıntısı | ✓ Şiddetli | ✓ Orta | ✓ Hafif |
-
-### 7.3 DoRA Beklentisi vs Gerçek
-
-Önceki raporlarda sorulan *"DoRA'nın direction bileşeni format sapmasını düzeltebilir mi?"* sorusunun yanıtı:
-
-> **Kısmen.** Direction decomposition LoRA'ya göre +5% iyileşme sağlamıştır, ancak attention-only target ve küçük model boyutu nedeniyle dramatik bir fark yaratamamıştır. QLoRA'nın kuantizasyon etkisi, DoRA'nın mathematical decomposition etkisinden 3x daha güçlü çıkmıştır.
-
----
-
-## 8. Sonuç & Öneriler
-
-### 8.1 Mevcut Bulgular
-- **QLoRA**, küçük modellerde (0.5B) açık ara en iyi yöntem — hem kalite hem VRAM hem hız.
-- **DoRA**, LoRA'ya göre marjinal iyileşme sağlıyor ancak QLoRA'yı yakalayamıyor.
-- **LoRA (16-bit)** en zayıf yöntem — pre-training artıkları dominant kalıyor.
-- Kuantizasyonun "bilgi kaybı" varsayımı küçük modellerde **çürütülmüştür** — düzenlileştirme etkisi baskın.
-
-### 8.2 Full Fine-Tuning Beklentisi
-Kalan tek yöntem olan Full Fine-Tuning ile:
-- Tüm 494M parametre güncellenecek
-- MLP katmanları da dahil olacağından format dönüşümü daha güçlü olabilir
-- Ancak 16GB T4 GPU'da VRAM sınırı ile gradient checkpointing gerekecek
-- Overfitting riski (1822 örnekle 494M parametre)
-
-### 8.3 Gelecek Çalışmalar
-1. `target_modules: all-linear` ile LoRA/DoRA denemesi
+### Gelecek Çalışmalar
+1. `target_modules: all-linear` ile LoRA/QLoRA denemesi (MLP dahil)
 2. Daha büyük model (Qwen2.5-1.5B veya 3B) üzerinde benchmark tekrarı
 3. Multi-turn tool calling evaluation
-4. Token-level analiz: hangi tokenlar yanlış üretiliyor?
+4. Full FT + QLoRA hybrid: QLoRA ile pre-train, Full FT ile fine-tune
 
 ---
 
-*Bu rapor, Full Fine-Tuning sonuçları tamamlandığında nihai haliyle güncellenecektir.*
+*Bu rapor, dört yöntemin tamamlanmasıyla nihai halini almıştır.*

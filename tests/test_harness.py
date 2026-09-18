@@ -38,14 +38,18 @@ def test_resolve_torch_dtype():
         assert resolve_torch_dtype("auto") == torch.float32
 
     # T4 GPU simülasyonu: cuda var ama bf16 desteklenmiyor -> float16
-    with patch("torch.cuda.is_available", return_value=True):
-        with patch("torch.cuda.is_bf16_supported", return_value=False):
-            assert resolve_torch_dtype("auto") == torch.float16
+    with (
+        patch("torch.cuda.is_available", return_value=True),
+        patch("torch.cuda.is_bf16_supported", return_value=False),
+    ):
+        assert resolve_torch_dtype("auto") == torch.float16
 
     # A100 GPU simülasyonu: cuda var ve bf16 destekleniyor -> bfloat16
-    with patch("torch.cuda.is_available", return_value=True):
-        with patch("torch.cuda.is_bf16_supported", return_value=True):
-            assert resolve_torch_dtype("auto") == torch.bfloat16
+    with (
+        patch("torch.cuda.is_available", return_value=True),
+        patch("torch.cuda.is_bf16_supported", return_value=True),
+    ):
+        assert resolve_torch_dtype("auto") == torch.bfloat16
 
 
 def test_build_generation_prompt():
@@ -100,7 +104,7 @@ def test_count_trainable_params():
 
 def test_track_vram_and_time():
     with track_vram_and_time("Test block") as stats:
-        x = sum(range(1000))
+        _ = sum(range(1000))
     assert stats["elapsed_seconds"] >= 0.0
     assert "peak_vram_mb" in stats
     assert stats["description"] == "Test block"
@@ -224,19 +228,21 @@ def test_load_model_and_tokenizer_mock():
 
     mock_model = MagicMock()
 
-    with patch("transformers.AutoTokenizer.from_pretrained", return_value=mock_tok):
-        with patch("transformers.AutoModelForCausalLM.from_pretrained", return_value=mock_model) as mock_lm:
-            model, tok = load_model_and_tokenizer(
-                model_name_or_path="dummy-model",
-                torch_dtype="float16",
-                load_in_4bit=True,
-            )
-            assert tok.padding_side == "left"
-            assert tok.pad_token == "<|endoftext|>"
-            mock_lm.assert_called_once()
-            call_kwargs = mock_lm.call_args.kwargs
-            assert "quantization_config" in call_kwargs
-            assert call_kwargs["quantization_config"].load_in_4bit is True
+    with (
+        patch("transformers.AutoTokenizer.from_pretrained", return_value=mock_tok),
+        patch("transformers.AutoModelForCausalLM.from_pretrained", return_value=mock_model) as mock_lm,
+    ):
+        _model, tok = load_model_and_tokenizer(
+            model_name_or_path="dummy-model",
+            torch_dtype="float16",
+            load_in_4bit=True,
+        )
+        assert tok.padding_side == "left"
+        assert tok.pad_token == "<|endoftext|>"
+        mock_lm.assert_called_once()
+        call_kwargs = mock_lm.call_args.kwargs
+        assert "quantization_config" in call_kwargs
+        assert call_kwargs["quantization_config"].load_in_4bit is True
 
 
 def test_run_eval_recovers_sample_4(tmp_path: Path):

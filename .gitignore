@@ -28,11 +28,13 @@ mlruns/
 .env*
 *.env
 
-# Reports (keep benchmark JSONs and markdown reports)
+# Reports (keep benchmark JSONs, markdown reports and figures)
 reports/*
 !reports/.gitkeep
 !reports/*.json
 !reports/*.md
+!reports/figures/
+!reports/figures/*
 
 1.md
 SPRINT_PLAN.md

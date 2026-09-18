@@ -86,9 +86,7 @@ def is_valid_json(raw: str, expected_tool: str | None = None) -> bool:
             # Açılış etiketi var ama kapanış yok veya malformed
             return False
         # Pozitif örneklerde tool_call üretilmemişse → geçersiz
-        if expected_tool is not None:
-            return False
-        return True
+        return expected_tool is None
 
     for block in json_blocks:
         s = block.strip()
@@ -96,7 +94,7 @@ def is_valid_json(raw: str, expected_tool: str | None = None) -> bool:
             s = s.replace("\\n", "\n")
         try:
             json.loads(s, strict=False)
-        except Exception:
+        except (json.JSONDecodeError, ValueError, TypeError):
             return False
     return True
 

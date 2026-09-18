@@ -155,9 +155,9 @@ def build_trainer(model, config: dict):
     - Dinamik padding (batch-level) ile VRAM tasarrufu saglanir
     - warmup_ratio kullanilir (surumden bagimsiz guvenli kullanim)
     """
-    from tool_calling_ft.training.collator import DataCollatorForCompletionOnlyLM
-
     from pathlib import Path
+
+    from tool_calling_ft.training.collator import DataCollatorForCompletionOnlyLM
     train_file = Path("data/processed/train.jsonl")
     val_file = Path("data/processed/val.jsonl")
     if not train_file.exists() or not val_file.exists():

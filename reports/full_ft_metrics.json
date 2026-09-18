@@ -1,0 +1,87 @@
+{
+  "method": "full_ft",
+  "base_model": "checkpoints/full_ft",
+  "adapter_path": null,
+  "dataset_path": "data/processed/eval_subset.jsonl",
+  "quality_metrics": {
+    "total_examples": 100,
+    "tool_required_count": 80,
+    "no_tool_required_count": 20,
+    "tool_selection_accuracy": 0.93,
+    "argument_accuracy": 0.5447,
+    "json_validity_rate": 0.87,
+    "invalid_tool_call_rate": 0.02,
+    "positive_tool_selection_accuracy": 0.925,
+    "positive_argument_accuracy": 0.4433,
+    "positive_json_validity": 0.8375,
+    "negative_rejection_accuracy": 0.95,
+    "unnecessary_tool_call_rate": 0.05
+  },
+  "performance_metrics": {
+    "total_samples": 100,
+    "total_generated_tokens": 13368,
+    "total_generation_seconds": 475.23,
+    "throughput_tokens_per_sec": 28.13,
+    "latency_ms_per_sample": 4752.32,
+    "description": "Eval: full_ft",
+    "elapsed_seconds": 478.1273,
+    "peak_vram_mb": 8913.67
+  },
+  "parameter_stats": {
+    "trainable_params": 494032768,
+    "all_params": 494032768,
+    "trainable_percentage": 100.0
+  },
+  "sample_predictions": [
+    {
+      "predicted_raw": "The Mona Lisa was painted by Leonardo da Vinci between 1503 and 1506. It is currently displayed at the Louvre Museum in Paris, France.",
+      "expected_tool": null,
+      "expected_arguments": null
+    },
+    {
+      "predicted_raw": "<tool_call>\n{\"name\": \"find_astronomy_apps\", \"arguments\": {\"features\": [\"real-time data\", \"celestial events\", \"constellation mapping\"], \"user_location\": \"34.0522N,118.2437W\"}}\n</tool_call>",
+      "expected_tool": "find_astronomy_apps",
+      "expected_arguments": {
+        "features": [
+          "real-time data",
+          "constellation mapping",
+          "augmented reality",
+          "educational"
+        ],
+        "user_location": "34.0522,-118.2437"
+      }
+    },
+    {
+      "predicted_raw": "<tool_call>\n{\"name\": \"fetch_movie_reviews\", \"arguments\": {\"movie_title\": \"Dune\", \"limit\": 5}}\n</tool_call>\n<tool_call>\n{\"name\": \"fetch_artist_details\", \"arguments\": {\"artist_name\": \"Timothée Chalamet\"}}\n</tool_call>\n<tool_call>\n{\"name\": \"fetch_box_office_figures\", \"arguments\": {\"movie_title\": \"Dune\", \"date_range\": {\"start_date\": \"2023-01-01\", \"end_date\": \"2023-04-30\"}}}\n</tool_call>",
+      "expected_tool": "fetch_movie_reviews",
+      "expected_arguments": {
+        "movie_title": "Dune",
+        "limit": 5
+      }
+    },
+    {
+      "predicted_raw": "<tool_call>\n{\"name\": \"create_task_completed_webhook\", \"arguments\": {\"planner_id\": \"abc123\", \"task_id\": \"task456\"}}\n</tool_call>",
+      "expected_tool": "create_task_completed_webhook",
+      "expected_arguments": {
+        "planner_id": "abc123",
+        "task_id": "task456"
+      }
+    },
+    {
+      "predicted_raw": "<tool_call>\n{\"name\": \"analyze_market_sentiment\", \"arguments\": {\"data_sources\": [\"Twitter\", \"Reddit\"], \"cryptocurrencies\": [\"Bitcoin\", \"Ethereum\", \"Ripple\"]}}\n</tool_call>\n<tool_call>\n{\"name\": \"predict_price_movements\", \"arguments\": {\"cryptocurrencies\": [\"Bitcoin\", \"Ethereum\", \"Ripple\"], \"prediction_model\": \"machine_learning_model\", \"data_type\": \"real_time\"}}\n</tool_call>\n<tool_call>\n{\"name\": \"execute_trades\", \"arguments\": {\"trading_strategy\": \"dynamic_rebalancing\", \"cryptocurrencies\": [\"Bitcoin\", \"Ethereum\", \"Ripple\"]}}\n</tool_call>\n<tool_call>\n{\"name\": \"manage_diversified_portfolio\", \"arguments\": {\"cryptocurrencies\": [\"Bitcoin\", \"Ethereum\", \"Ripple\"], \"rebalancing_strategy\": \"dynamic_rebalancing\", \"market_conditions\": \"real-time\"}}\n</tool_call>",
+      "expected_tool": "analyze_market_sentiment",
+      "expected_arguments": {
+        "data_sources": [
+          "Twitter",
+          "Reddit",
+          "News Outlets"
+        ],
+        "cryptocurrencies": [
+          "Bitcoin",
+          "Ethereum",
+          "Ripple"
+        ]
+      }
+    }
+  ]
+}
