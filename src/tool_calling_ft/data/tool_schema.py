@@ -277,3 +277,34 @@ def parse_tool_calls_from_text(
                 tool_calls.append(parsed)
 
     return tool_calls
+
+
+def parse_tool_calls_strict(response_text: str) -> list[dict[str, Any]]:
+    """Yalnızca Hermes formatına birebir uyan tool call'ları kabul eden sıkı parser.
+
+    parse_tool_calls_from_text'in aksine hiçbir onarım veya fallback yapmaz:
+    - Yalnızca <tool_call>...</tool_call> blokları okunur (etiketsiz/markdown JSON yok sayılır).
+    - Açılış ve kapanış etiket sayıları eşit değilse çıktı bozuk kabul edilir → [].
+    - Blok içeriği standart json.loads ile ayrıştırılabilen bir dict olmalı; "name" boş
+      olmayan bir string, "arguments" (varsa) bir dict olmalı. Uymayan bloklar atlanır.
+    - Eksik "name" tool listesinden tahmin edilmez.
+
+    Gerçek bir uygulamadaki parser'ın davranışına yakın olduğu için, modelin çıktısının
+    pratikte kullanılabilir olup olmadığını ölçer.
+    """
+    if response_text.count("<tool_call>") != response_text.count("</tool_call>"):
+        return []
+
+    tool_calls: list[dict[str, Any]] = []
+    for block in re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", response_text, flags=re.DOTALL):
+        try:
+            obj = json.loads(block)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(obj, dict):
+            continue
+        name = obj.get("name")
+        arguments = obj.get("arguments", {})
+        if isinstance(name, str) and name and isinstance(arguments, dict):
+            tool_calls.append({"name": name, "arguments": arguments})
+    return tool_calls

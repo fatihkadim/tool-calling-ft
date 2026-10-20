@@ -362,3 +362,70 @@ def test_parse_markdown_code_block():
     assert is_valid_json(raw, expected_tool="get_weather") is True
     assert tool_selection_correct(ex) is True
     assert argument_accuracy(ex) == 1.0
+
+
+def test_strict_mode_rejects_untagged_calls():
+    # QLoRA'nın tipik çıktısı: etiketsiz JSON + arkasında çöp metin
+    raw = '�\n{"name": "find_apps", "arguments": {"q": "stars"}}\n_Parms\n norge'
+    ex = ToolCallExample(raw, "find_apps", {"q": "stars"}, {"find_apps"})
+
+    # Gevşek mod kurtarır
+    assert tool_selection_correct(ex) is True
+    assert argument_accuracy(ex) == 1.0
+    assert is_valid_json(raw, expected_tool="find_apps") is True
+
+    # Sıkı mod kabul etmez
+    assert tool_selection_correct(ex, strict=True) is False
+    assert argument_accuracy(ex, strict=True) == 0.0
+    assert is_valid_json(raw, expected_tool="find_apps", strict=True) is False
+
+
+def test_strict_mode_accepts_proper_calls():
+    raw = '<tool_call>\n{"name": "find_apps", "arguments": {"q": "stars"}}\n</tool_call>'
+    ex = ToolCallExample(raw, "find_apps", {"q": "stars"}, {"find_apps"})
+    assert tool_selection_correct(ex, strict=True) is True
+    assert argument_accuracy(ex, strict=True) == 1.0
+    assert is_valid_json(raw, expected_tool="find_apps", strict=True) is True
+    assert is_invalid_tool_call(ex, {"find_apps"}, strict=True) is False
+
+
+def test_strict_mode_negative_examples():
+    # Negatif örnekte etiketsiz JSON sıkı modda tool çağrısı sayılmaz
+    raw = 'Here is an example: {"name": "x", "arguments": {}}'
+    ex = ToolCallExample(raw, None)
+    assert is_unnecessary_tool_call(ex) is True
+    assert is_unnecessary_tool_call(ex, strict=True) is False
+    assert tool_selection_correct(ex, strict=True) is True
+
+    # Bozuk JSON'lu etiket sıkı modda geçersiz
+    assert is_valid_json("<tool_call>{name: x}</tool_call>", strict=True) is False
+
+
+def test_aggregate_metrics_strict_lower_or_equal():
+    known = {"get_weather"}
+    examples = [
+        ToolCallExample('<tool_call>{"name": "get_weather", "arguments": {}}</tool_call>',
+                        "get_weather", {}, known),
+        ToolCallExample('{"name": "get_weather", "arguments": {}}', "get_weather", {}, known),
+        ToolCallExample("Paris is the capital.", None, None, known),
+    ]
+    lenient = aggregate_metrics(examples, known)
+    strict = aggregate_metrics(examples, known, strict=True)
+    assert lenient["positive_tool_selection_accuracy"] == 1.0
+    assert strict["positive_tool_selection_accuracy"] == 0.5
+    assert strict["negative_rejection_accuracy"] == 1.0
+
+
+def test_score_example_fields():
+    from tool_calling_ft.eval.metrics import score_example
+
+    ex = ToolCallExample('<tool_call>{"name": "a", "arguments": {"x": 1}}</tool_call>', "a", {"x": 1})
+    scores = score_example(ex, {"a"})
+    assert scores == {
+        "is_positive": True,
+        "json_valid": True,
+        "tool_selection_correct": True,
+        "argument_accuracy": 1.0,
+        "invalid_tool_call": False,
+        "unnecessary_tool_call": False,
+    }

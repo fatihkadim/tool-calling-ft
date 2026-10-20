@@ -260,3 +260,32 @@ def test_dataset_pipeline_end_to_end(tmp_path: Path):
         saved_summary = json.load(f)
     assert saved_summary["total_samples"] == 25
     assert saved_summary["seed"] == 42
+
+
+def test_parse_tool_calls_strict():
+    from tool_calling_ft.data.tool_schema import parse_tool_calls_strict
+
+    tagged = '<tool_call>\n{"name": "get_weather", "arguments": {"city": "Izmir"}}\n</tool_call>'
+    assert parse_tool_calls_strict(tagged) == [{"name": "get_weather", "arguments": {"city": "Izmir"}}]
+
+    # Birden fazla blok
+    multi = tagged + "\n" + '<tool_call>\n{"name": "get_time", "arguments": {}}\n</tool_call>'
+    assert [c["name"] for c in parse_tool_calls_strict(multi)] == ["get_weather", "get_time"]
+
+    # Etiketsiz JSON, markdown ve Python dict literal kabul edilmez
+    assert parse_tool_calls_strict('{"name": "get_weather", "arguments": {}}') == []
+    assert parse_tool_calls_strict('```json\n{"name": "get_weather", "arguments": {}}\n```') == []
+    assert parse_tool_calls_strict("<tool_call>{'name': 'get_weather'}</tool_call>") == []
+
+    # Dengesiz etiketler → tüm çıktı geçersiz
+    assert parse_tool_calls_strict(tagged + "\n<tool_call>\n{") == []
+
+    # Eksik/boş name veya dict olmayan arguments atlanır
+    assert parse_tool_calls_strict('<tool_call>{"arguments": {"x": 1}}</tool_call>') == []
+    assert parse_tool_calls_strict('<tool_call>{"name": "", "arguments": {}}</tool_call>') == []
+    assert parse_tool_calls_strict('<tool_call>{"name": "f", "arguments": "x=1"}</tool_call>') == []
+
+    # arguments yoksa boş dict kabul edilir
+    assert parse_tool_calls_strict('<tool_call>{"name": "f"}</tool_call>') == [
+        {"name": "f", "arguments": {}}
+    ]

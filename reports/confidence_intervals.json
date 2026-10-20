@@ -1,0 +1,219 @@
+{
+  "note": "İkili metrikler sayımlardan yeniden kurulup bootstrap'lendi (10000 örnekleme, %95). Karşılaştırmalar bağımsız bootstrap (temkinli). Argument accuracy için örnek bazlı tahminler gerekiyor.",
+  "metrics": {
+    "lora": {
+      "positive_tool_selection_accuracy": {
+        "successes": 7,
+        "n": 80,
+        "estimate": 0.0875,
+        "bootstrap_95": [
+          0.025,
+          0.15
+        ],
+        "wilson_95": [
+          0.04303145464743989,
+          0.1697698277708346
+        ]
+      },
+      "positive_json_validity": {
+        "successes": 9,
+        "n": 80,
+        "estimate": 0.1125,
+        "bootstrap_95": [
+          0.05,
+          0.1875
+        ],
+        "wilson_95": [
+          0.06032618694827016,
+          0.20018410865677552
+        ]
+      },
+      "negative_rejection_accuracy": {
+        "successes": 19,
+        "n": 20,
+        "estimate": 0.95,
+        "bootstrap_95": [
+          0.85,
+          1.0
+        ],
+        "wilson_95": [
+          0.7638641064874331,
+          0.9911187805671268
+        ]
+      }
+    },
+    "dora": {
+      "positive_tool_selection_accuracy": {
+        "successes": 11,
+        "n": 80,
+        "estimate": 0.1375,
+        "bootstrap_95": [
+          0.0625,
+          0.2125
+        ],
+        "wilson_95": [
+          0.07854633679551142,
+          0.22967297199630554
+        ]
+      },
+      "positive_json_validity": {
+        "successes": 12,
+        "n": 80,
+        "estimate": 0.15,
+        "bootstrap_95": [
+          0.075,
+          0.2375
+        ],
+        "wilson_95": [
+          0.08793954037414209,
+          0.2441342750110605
+        ]
+      },
+      "negative_rejection_accuracy": {
+        "successes": 19,
+        "n": 20,
+        "estimate": 0.95,
+        "bootstrap_95": [
+          0.85,
+          1.0
+        ],
+        "wilson_95": [
+          0.7638641064874331,
+          0.9911187805671268
+        ]
+      }
+    },
+    "qlora": {
+      "positive_tool_selection_accuracy": {
+        "successes": 37,
+        "n": 80,
+        "estimate": 0.4625,
+        "bootstrap_95": [
+          0.35,
+          0.575
+        ],
+        "wilson_95": [
+          0.3574781238878701,
+          0.5709583563319731
+        ]
+      },
+      "positive_json_validity": {
+        "successes": 37,
+        "n": 80,
+        "estimate": 0.4625,
+        "bootstrap_95": [
+          0.35,
+          0.575
+        ],
+        "wilson_95": [
+          0.3574781238878701,
+          0.5709583563319731
+        ]
+      },
+      "negative_rejection_accuracy": {
+        "successes": 17,
+        "n": 20,
+        "estimate": 0.85,
+        "bootstrap_95": [
+          0.7,
+          1.0
+        ],
+        "wilson_95": [
+          0.6395767041130426,
+          0.9476322080405041
+        ]
+      }
+    },
+    "full_ft": {
+      "positive_tool_selection_accuracy": {
+        "successes": 74,
+        "n": 80,
+        "estimate": 0.925,
+        "bootstrap_95": [
+          0.8625,
+          0.975
+        ],
+        "wilson_95": [
+          0.8458779990261992,
+          0.9651752251489122
+        ]
+      },
+      "positive_json_validity": {
+        "successes": 67,
+        "n": 80,
+        "estimate": 0.8375,
+        "bootstrap_95": [
+          0.75,
+          0.9125
+        ],
+        "wilson_95": [
+          0.7415689513651669,
+          0.9025027266562451
+        ]
+      },
+      "negative_rejection_accuracy": {
+        "successes": 19,
+        "n": 20,
+        "estimate": 0.95,
+        "bootstrap_95": [
+          0.85,
+          1.0
+        ],
+        "wilson_95": [
+          0.7638641064874331,
+          0.9911187805671268
+        ]
+      }
+    }
+  },
+  "tool_selection_comparisons": {
+    "dora - lora": {
+      "diff": 0.05000000000000002,
+      "bootstrap_95": [
+        -0.05,
+        0.15
+      ],
+      "significant": false
+    },
+    "qlora - lora": {
+      "diff": 0.375,
+      "bootstrap_95": [
+        0.24999999999999997,
+        0.5
+      ],
+      "significant": true
+    },
+    "full_ft - lora": {
+      "diff": 0.8375,
+      "bootstrap_95": [
+        0.75,
+        0.9125
+      ],
+      "significant": true
+    },
+    "qlora - dora": {
+      "diff": 0.325,
+      "bootstrap_95": [
+        0.1875,
+        0.46249999999999997
+      ],
+      "significant": true
+    },
+    "full_ft - dora": {
+      "diff": 0.7875000000000001,
+      "bootstrap_95": [
+        0.6875,
+        0.875
+      ],
+      "significant": true
+    },
+    "full_ft - qlora": {
+      "diff": 0.4625,
+      "bootstrap_95": [
+        0.3375,
+        0.5875
+      ],
+      "significant": true
+    }
+  }
+}

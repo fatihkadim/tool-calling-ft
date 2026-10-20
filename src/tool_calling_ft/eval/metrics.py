@@ -12,7 +12,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from tool_calling_ft.data.tool_schema import parse_tool_calls_from_text
+from tool_calling_ft.data.tool_schema import (
+    parse_tool_calls_from_text,
+    parse_tool_calls_strict,
+)
 
 
 @dataclass
@@ -69,13 +72,38 @@ def extract_raw_tool_call_json(raw: str) -> list[str]:
     return []
 
 
-def is_valid_json(raw: str, expected_tool: str | None = None) -> bool:
+def _parse_calls(raw: str, strict: bool) -> list[dict[str, Any]]:
+    """strict=True ise yalnızca etiketli ve onarımsız tool call'lar kabul edilir."""
+    return parse_tool_calls_strict(raw) if strict else parse_tool_calls_from_text(raw)
+
+
+def _is_valid_json_strict(raw: str, expected_tool: str | None) -> bool:
+    """Yalnızca <tool_call> bloklarına bakar; her blok standart JSON dict olmalı."""
+    if raw.count("<tool_call>") != raw.count("</tool_call>"):
+        return False
+    blocks = re.findall(r"<tool_call>\s*(.*?)\s*</tool_call>", raw, flags=re.DOTALL)
+    if not blocks:
+        return expected_tool is None
+    for block in blocks:
+        try:
+            if not isinstance(json.loads(block), dict):
+                return False
+        except (json.JSONDecodeError, ValueError):
+            return False
+    return True
+
+
+def is_valid_json(raw: str, expected_tool: str | None = None, strict: bool = False) -> bool:
     """Modelin ürettiği tool call JSON'ının sözdizimsel olarak geçerli olup olmadığını kontrol eder.
 
     - Eğer expected_tool varsa (pozitif örnek) ve model hiç tool_call üretmemişse → False.
     - Eğer expected_tool yoksa (negatif örnek) ve model düz metin dönmüşse → True.
     - Malformed tool_call tag'i varsa → False.
+    - strict=True: etiketsiz JSON yok sayılır, bloklar onarılmadan json.loads ile okunur.
     """
+    if strict:
+        return _is_valid_json_strict(raw, expected_tool)
+
     if "<tool_call>" in raw and raw.count("<tool_call>") != raw.count("</tool_call>"):
         return False
 
@@ -99,13 +127,13 @@ def is_valid_json(raw: str, expected_tool: str | None = None) -> bool:
     return True
 
 
-def tool_selection_correct(example: ToolCallExample) -> bool:
+def tool_selection_correct(example: ToolCallExample, strict: bool = False) -> bool:
     """Doğru tool seçilmiş mi kontrol eder.
 
     - expected_tool is None: Model tool çağırmamışsa (düz metin) DOĞRU (True).
     - expected_tool is str: Modelin ürettiği ilk tool adı expected_tool ile eşleşiyorsa DOĞRU (True).
     """
-    calls = parse_tool_calls_from_text(example.predicted_raw)
+    calls = _parse_calls(example.predicted_raw, strict)
 
     if example.expected_tool is None:
         return len(calls) == 0
@@ -132,14 +160,14 @@ def _values_match(pred_val: Any, exp_val: Any) -> bool:
     return False
 
 
-def argument_accuracy(example: ToolCallExample) -> float:
+def argument_accuracy(example: ToolCallExample, strict: bool = False) -> float:
     """Field-level exact match oranı döndürür (0.0 - 1.0).
 
     - Tool seçimi yanlışsa veya model tool çağırmamışsa (ama bekleniyorsa) 0.0 döner.
     - Negatif örneklerde (expected_tool=None) model tool çağırmamışsa 1.0 döner.
     - Beklenen argümanlar boşsa ({}) ve model boş argüman vermişse 1.0 döner.
     """
-    calls = parse_tool_calls_from_text(example.predicted_raw)
+    calls = _parse_calls(example.predicted_raw, strict)
 
     if example.expected_tool is None:
         return 1.0 if len(calls) == 0 else 0.0
@@ -169,18 +197,20 @@ def argument_accuracy(example: ToolCallExample) -> float:
     return matched_fields / total_fields
 
 
-def is_unnecessary_tool_call(example: ToolCallExample) -> bool:
+def is_unnecessary_tool_call(example: ToolCallExample, strict: bool = False) -> bool:
     """expected_tool None iken modelin yine de bir tool çağırıp çağırmadığını kontrol eder."""
     if example.expected_tool is not None:
         return False
 
-    calls = parse_tool_calls_from_text(example.predicted_raw)
+    calls = _parse_calls(example.predicted_raw, strict)
     return len(calls) > 0
 
 
-def is_invalid_tool_call(example: ToolCallExample, known_tools: set[str]) -> bool:
+def is_invalid_tool_call(
+    example: ToolCallExample, known_tools: set[str], strict: bool = False
+) -> bool:
     """Modelin bilinmeyen (tanımlanmamış / uydurma) bir tool çağırıp çağırmadığını kontrol eder."""
-    calls = parse_tool_calls_from_text(example.predicted_raw)
+    calls = _parse_calls(example.predicted_raw, strict)
     if not calls:
         return False
 
@@ -191,7 +221,24 @@ def is_invalid_tool_call(example: ToolCallExample, known_tools: set[str]) -> boo
     return False
 
 
-def aggregate_metrics(examples: list[ToolCallExample], known_tools: set[str]) -> dict[str, Any]:
+def score_example(
+    example: ToolCallExample, known_tools: set[str], strict: bool = False
+) -> dict[str, Any]:
+    """Tek bir örneğin tüm metriklerini döndürür (örnek bazlı kayıt ve paired bootstrap için)."""
+    tools_set = example.known_tools if example.known_tools is not None else known_tools
+    return {
+        "is_positive": example.expected_tool is not None,
+        "json_valid": is_valid_json(example.predicted_raw, example.expected_tool, strict=strict),
+        "tool_selection_correct": tool_selection_correct(example, strict=strict),
+        "argument_accuracy": argument_accuracy(example, strict=strict),
+        "invalid_tool_call": is_invalid_tool_call(example, tools_set, strict=strict),
+        "unnecessary_tool_call": is_unnecessary_tool_call(example, strict=strict),
+    }
+
+
+def aggregate_metrics(
+    examples: list[ToolCallExample], known_tools: set[str], strict: bool = False
+) -> dict[str, Any]:
     """Tüm örnekler üzerinde metrikleri toplayıp özet istatistik sözlüğü döndürür.
 
     Pozitif (tool beklenen) ve negatif (tool beklenmeyen) örnekler ayrı ayrı
@@ -209,6 +256,8 @@ def aggregate_metrics(examples: list[ToolCallExample], known_tools: set[str]) ->
       - json_validity_rate (toplam)
       - invalid_tool_call_rate
       - unnecessary_tool_call_rate
+
+    strict=True ise tüm metrikler sıkı parser ile hesaplanır (bkz. parse_tool_calls_strict).
     """
     if not examples:
         return {
@@ -247,21 +296,21 @@ def aggregate_metrics(examples: list[ToolCallExample], known_tools: set[str]) ->
         tools_set = ex.known_tools if ex.known_tools is not None else known_tools
 
         # 1. JSON Validity — artık expected_tool bilgisi ile doğru değerlendirme
-        json_valid = is_valid_json(ex.predicted_raw, expected_tool=ex.expected_tool)
+        json_valid = is_valid_json(ex.predicted_raw, expected_tool=ex.expected_tool, strict=strict)
         if json_valid:
             valid_json_count += 1
 
         # 2. Tool Selection
-        sel_correct = tool_selection_correct(ex)
+        sel_correct = tool_selection_correct(ex, strict=strict)
         if sel_correct:
             tool_sel_correct += 1
 
         # 3. Argument Accuracy
-        arg_acc = argument_accuracy(ex)
+        arg_acc = argument_accuracy(ex, strict=strict)
         arg_acc_sum += arg_acc
 
         # 4. Invalid Tool Call (bilinmeyen fonksiyon çağırma)
-        if is_invalid_tool_call(ex, tools_set):
+        if is_invalid_tool_call(ex, tools_set, strict=strict):
             invalid_tool_count += 1
 
         # 5. Pozitif vs Negatif ayrıştırma
@@ -276,7 +325,7 @@ def aggregate_metrics(examples: list[ToolCallExample], known_tools: set[str]) ->
             neg_total += 1
             if sel_correct:
                 neg_rejection_correct += 1
-            if is_unnecessary_tool_call(ex):
+            if is_unnecessary_tool_call(ex, strict=strict):
                 unnecessary_tool_count += 1
 
     return {

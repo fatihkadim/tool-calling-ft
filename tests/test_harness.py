@@ -310,3 +310,68 @@ def test_run_eval_recovers_sample_4(tmp_path: Path):
     assert report["quality_metrics"]["json_validity_rate"] == 1.0
     # Stop token temizliği kontrolü: <|endoftext|> silinmiş olmalı
     assert "<|endoftext|>" not in report["sample_predictions"][0]["predicted_raw"]
+
+
+def test_run_eval_saves_all_predictions_and_strict_metrics(tmp_path: Path):
+    """Tüm tahminler JSONL'a yazılmalı; etiketsiz çıktı sıkı metriklerde başarısız sayılmalı."""
+    eval_file = tmp_path / "eval.jsonl"
+    items = [
+        {
+            "id": f"s-{i}",
+            "system": "System prompt",
+            "user": "Weather?",
+            "tools": [{"type": "function", "function": {"name": "get_weather", "parameters": {}}}],
+            "expected_tool": "get_weather",
+            "expected_arguments": {"city": "Izmir"},
+        }
+        for i in range(3)
+    ]
+    with open(eval_file, "w", encoding="utf-8") as f:
+        f.writelines(json.dumps(item) + "\n" for item in items)
+
+    mock_model = MagicMock()
+    mock_model.device = torch.device("cpu")
+    dummy_param = torch.nn.Parameter(torch.zeros(1))
+    mock_model.parameters.side_effect = lambda: iter([dummy_param])
+
+    mock_tok = MagicMock()
+    mock_tok.pad_token_id = 0
+    mock_tok.eos_token_id = 1
+    mock_tok.convert_tokens_to_ids.return_value = 99  # <|im_end|>
+    mock_tok.return_value = {
+        "input_ids": torch.tensor([[7, 7, 7]]),
+        "attention_mask": torch.tensor([[1, 1, 1]]),
+    }
+    # Üretilen: [5, 99, 0] → 2. token'da durdu
+    mock_model.generate.return_value = torch.tensor([[7, 7, 7, 5, 99, 0]])
+    mock_tok.decode.return_value = '{"name": "get_weather", "arguments": {"city": "Izmir"}}<|im_end|>'
+
+    report_dir = tmp_path / "reports"
+    with patch(
+        "tool_calling_ft.eval.harness.load_model_and_tokenizer",
+        return_value=(mock_model, mock_tok),
+    ):
+        report = run_eval(
+            model_name_or_path="dummy-model",
+            dataset_path=eval_file,
+            method_name="pred_test",
+            output_dir=report_dir,
+            batch_size=1,
+        )
+
+    # Gevşek parser etiketsiz JSON'u kurtarır, sıkı parser kurtarmaz
+    assert report["quality_metrics"]["positive_tool_selection_accuracy"] == 1.0
+    assert report["quality_metrics_strict"]["positive_tool_selection_accuracy"] == 0.0
+
+    pred_path = report_dir / "predictions" / "pred_test_predictions.jsonl"
+    assert report["predictions_path"] == str(pred_path)
+    rows = [json.loads(line) for line in pred_path.read_text(encoding="utf-8").splitlines()]
+    assert [r["id"] for r in rows] == ["s-0", "s-1", "s-2"]
+    assert rows[0]["generated_tokens"] == 2
+    assert rows[0]["stopped"] is True
+    assert rows[0]["scores"]["tool_selection_correct"] is True
+    assert rows[0]["scores_strict"]["tool_selection_correct"] is False
+    assert rows[0]["known_tools"] == ["get_weather"]
+
+    assert report["performance_metrics"]["total_generated_tokens_until_stop"] == 6
+    assert report["performance_metrics"]["stopped_rate"] == 1.0

@@ -17,7 +17,11 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tool_calling_ft.data.tool_schema import extract_tool_names
-from tool_calling_ft.eval.metrics import ToolCallExample, aggregate_metrics
+from tool_calling_ft.eval.metrics import (
+    ToolCallExample,
+    aggregate_metrics,
+    score_example,
+)
 from tool_calling_ft.utils.logging import (
     count_trainable_params,
     save_metrics_report,
@@ -135,10 +139,16 @@ def run_inference_on_samples(
     samples: list[dict[str, Any]],
     max_new_tokens: int = 256,
     batch_size: int = 4,
-) -> tuple[list[ToolCallExample], dict[str, Any]]:
-    """Test örnekleri üzerinde inference çalıştırır ve ToolCallExample listesi üretir."""
+) -> tuple[list[ToolCallExample], dict[str, Any], list[dict[str, Any]]]:
+    """Test örnekleri üzerinde inference çalıştırır ve ToolCallExample listesi üretir.
+
+    Üçüncü dönüş değeri örnek bazlı üretim bilgisidir (stop token'a kadar üretilen
+    token sayısı, modelin durup durmadığı).
+    """
     examples: list[ToolCallExample] = []
+    generation_info: list[dict[str, Any]] = []
     total_generated_tokens = 0
+    total_tokens_until_stop = 0
     total_generation_time = 0.0
 
     # Model cihazını güvenli tespit et
@@ -186,6 +196,16 @@ def run_inference_on_samples(
             gen_tokens = out[prompt_len:]
             total_generated_tokens += len(gen_tokens)
 
+            # Batch'te erken biten örnekler pad ile doldurulur; gerçek üretim ilk stop
+            # token'ında biter. Modelin hiç durmadığı örnekler max_new_tokens'a ulaşır.
+            gen_list = gen_tokens.tolist()
+            stop_pos = next((k for k, t in enumerate(gen_list) if t in stop_token_ids), None)
+            tokens_until_stop = stop_pos + 1 if stop_pos is not None else len(gen_list)
+            total_tokens_until_stop += tokens_until_stop
+            generation_info.append(
+                {"generated_tokens": tokens_until_stop, "stopped": stop_pos is not None}
+            )
+
             gen_text = tokenizer.decode(gen_tokens, skip_special_tokens=False)
             # Stop token'lar ve batch padding sonrası metni temizle
             for stop_tag in ("<|im_end|>", "<|endoftext|>"):
@@ -214,11 +234,45 @@ def run_inference_on_samples(
     perf_stats = {
         "total_samples": len(samples),
         "total_generated_tokens": total_generated_tokens,
+        "total_generated_tokens_until_stop": total_tokens_until_stop,
+        "stopped_rate": (
+            round(sum(g["stopped"] for g in generation_info) / len(samples), 4) if samples else 0.0
+        ),
         "total_generation_seconds": round(total_generation_time, 2),
         "throughput_tokens_per_sec": throughput,
         "latency_ms_per_sample": latency_per_sample,
     }
-    return examples, perf_stats
+    return examples, perf_stats, generation_info
+
+
+def save_predictions(
+    samples: list[dict[str, Any]],
+    examples: list[ToolCallExample],
+    generation_info: list[dict[str, Any]],
+    known_tools: set[str],
+    path: Path,
+) -> Path:
+    """Tüm tahminleri örnek bazlı skorlarıyla birlikte JSONL olarak kaydeder.
+
+    Bu dosya sayesinde metrikler GPU olmadan yeniden hesaplanabilir
+    (bkz. scripts/rescore_predictions.py).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for i, (item, ex, gen) in enumerate(zip(samples, examples, generation_info)):
+            row = {
+                "id": item.get("id", f"sample-{i:04d}"),
+                "expected_tool": ex.expected_tool,
+                "expected_arguments": ex.expected_arguments,
+                "all_expected_tool_calls": item.get("all_expected_tool_calls"),
+                "known_tools": sorted(ex.known_tools or []),
+                "predicted_raw": ex.predicted_raw,
+                **gen,
+                "scores": score_example(ex, known_tools),
+                "scores_strict": score_example(ex, known_tools, strict=True),
+            }
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return path
 
 
 def run_eval(
@@ -231,8 +285,13 @@ def run_eval(
     output_dir: str | Path = "reports",
     torch_dtype: str | torch.dtype = "auto",
     load_in_4bit: bool | None = None,
+    save_all_predictions: bool = True,
 ) -> dict[str, Any]:
-    """Tam değerlendirme sürecini çalıştırır ve rapor kaydeder."""
+    """Tam değerlendirme sürecini çalıştırır ve rapor kaydeder.
+
+    save_all_predictions=True ise tüm tahminler
+    <output_dir>/predictions/<method>_predictions.jsonl dosyasına yazılır.
+    """
     dataset_file = Path(dataset_path)
     if not dataset_file.exists():
         raise FileNotFoundError(f"Değerlendirme veri seti bulunamadı: {dataset_file}")
@@ -267,7 +326,7 @@ def run_eval(
         )
         param_stats = count_trainable_params(model)
 
-        examples, perf_stats = run_inference_on_samples(
+        examples, perf_stats, generation_info = run_inference_on_samples(
             model=model,
             tokenizer=tokenizer,
             samples=samples,
@@ -279,6 +338,7 @@ def run_eval(
             all_known_tools.update(extract_tool_names(s.get("tools", [])))
 
         quality_metrics = aggregate_metrics(examples, all_known_tools)
+        quality_metrics_strict = aggregate_metrics(examples, all_known_tools, strict=True)
 
     sample_predictions = [
         {
@@ -295,10 +355,22 @@ def run_eval(
         "adapter_path": str(adapter_path) if adapter_path else None,
         "dataset_path": str(dataset_file),
         "quality_metrics": quality_metrics,
+        "quality_metrics_strict": quality_metrics_strict,
         "performance_metrics": {**perf_stats, **vram_stats},
         "parameter_stats": param_stats,
         "sample_predictions": sample_predictions,
     }
+
+    if save_all_predictions:
+        predictions_path = save_predictions(
+            samples,
+            examples,
+            generation_info,
+            all_known_tools,
+            Path(output_dir) / "predictions" / f"{method_name}_predictions.jsonl",
+        )
+        report["predictions_path"] = str(predictions_path)
+        logger.info("Tüm tahminler kaydedildi: %s", predictions_path)
 
     report_path = save_metrics_report(report, f"{method_name}_metrics.json", output_dir)
     logger.info("Değerlendirme tamamlandı. Sonuçlar: %s", report_path)
@@ -381,7 +453,8 @@ def main() -> None:
     print(f" EVALUATION REPORT: {args.method.upper()}")
     print("=" * 50)
     for k, v in results["quality_metrics"].items():
-        print(f"  {k:30s}: {v}")
+        strict_v = results["quality_metrics_strict"].get(k)
+        print(f"  {k:30s}: {v}  (strict: {strict_v})")
     print("-" * 50)
     for k, v in results["performance_metrics"].items():
         print(f"  {k:30s}: {v}")
