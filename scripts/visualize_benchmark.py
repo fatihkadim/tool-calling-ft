@@ -61,6 +61,29 @@ def get_ordered_methods(reports: dict[str, dict]) -> list[str]:
     return [m for m in METHOD_ORDER if m in reports]
 
 
+def get_comparable_methods(reports: dict[str, dict], methods: list[str]) -> list[str]:
+    """Yalnızca aynı eval seti boyutunda değerlendirilmiş yöntemleri döndürür.
+
+    Baseline şu an 5 örneklik bir smoke test ile çalıştırıldığı için 100 örneklik
+    eval setindeki yöntemlerle aynı grafikte gösterilmemeli.
+    """
+    sizes = {m: reports[m].get("quality_metrics", {}).get("total_examples", 0) for m in methods}
+    full_size = max(sizes.values(), default=0)
+    comparable = [m for m in methods if sizes[m] == full_size]
+    for m in methods:
+        if m not in comparable:
+            print(
+                f"  [WARN] {m}: {sizes[m]} örnekle değerlendirilmiş (diğerleri {full_size}); "
+                "kalite ve hız grafiklerinden çıkarıldı"
+            )
+    return comparable
+
+
+def add_footnote(fig, text: str):
+    """Grafiğin altına küçük bir açıklama notu ekler."""
+    fig.text(0.01, -0.02, text, ha="left", va="top", fontsize=8, color="#b0b0b0", wrap=True)
+
+
 def setup_style():
     """Grafik stilini ayarla — koyu tema, modern font."""
     plt.rcParams.update({
@@ -98,19 +121,9 @@ def plot_quality_bar_chart(reports: dict, methods: list[str], output_dir: Path):
 
     for i, method in enumerate(methods):
         qm = reports[method].get("quality_metrics", {})
-        values = []
-        for metric_key, _ in metrics:
-            val = qm.get(metric_key)
-            if val is None:
-                # Baseline'da pozitif metrikler yoksa toplam metrikleri kullan
-                fallback_map = {
-                    "positive_tool_selection_accuracy": "tool_selection_accuracy",
-                    "positive_argument_accuracy": "argument_accuracy",
-                    "positive_json_validity": "json_validity_rate",
-                    "negative_rejection_accuracy": "tool_selection_accuracy",
-                }
-                val = qm.get(fallback_map.get(metric_key, metric_key), 0.0)
-            values.append(val * 100)  # Yüzdeye çevir
+        # Toplam metriklere geri düşmüyoruz: pozitif/negatif ayrımı olmayan bir
+        # rapor bu grafikte yanlış (şişirilmiş) değerler gösterirdi.
+        values = [qm.get(metric_key, 0.0) * 100 for metric_key, _ in metrics]
 
         offset = (i - len(methods) / 2 + 0.5) * width
         bars = ax.bar(
@@ -148,6 +161,12 @@ def plot_quality_bar_chart(reports: dict, methods: list[str], output_dir: Path):
     )
     ax.grid(axis="y", alpha=0.3)
 
+    add_footnote(
+        fig,
+        "Pozitif n=80, negatif n=20 (negatifte 1 örnek = %5), tek seed. Baseline gösterilmiyor: "
+        "henüz yalnızca 5 örnekle çalıştırıldı.\nParser etiketsiz {\"name\": ...} JSON'u da tool "
+        "çağrısı sayıyor; adapter skorları (özellikle QLoRA) sıkı parser'la düşebilir.",
+    )
     fig.tight_layout()
     out_path = output_dir / "quality_bar_chart.png"
     fig.savefig(out_path)
@@ -206,6 +225,11 @@ def plot_radar_chart(reports: dict, methods: list[str], output_dir: Path):
         framealpha=0.8, facecolor="#16213e", edgecolor="#444",
     )
 
+    add_footnote(
+        fig,
+        "100 örnek üzerinden toplam metrikler; Rejection Rate = 1 - gereksiz çağrı oranı (n=20).\n"
+        "Baseline gösterilmiyor: henüz yalnızca 5 örnekle çalıştırıldı.",
+    )
     fig.tight_layout()
     out_path = output_dir / "quality_radar_chart.png"
     fig.savefig(out_path)
@@ -246,14 +270,22 @@ def plot_vram_vs_accuracy(reports: dict, methods: list[str], output_dir: Path):
             arrowprops={"arrowstyle": "->", "color": color, "lw": 1.5},
         )
 
-    ax.set_xlabel("Peak VRAM (MB)", fontsize=12, fontweight="bold")
+    # Eksen 0'dan başlar; aksi halde ~%5'lik VRAM farkı olduğundan büyük görünür
+    ax.set_xlim(0, 16384)  # T4: 16 GB
+    ax.set_ylim(0, 100)
+    ax.set_xlabel("Peak VRAM — değerlendirme sırasında (MB)", fontsize=12, fontweight="bold")
     ax.set_ylabel("Tool Selection Accuracy — Pozitif (%)", fontsize=12, fontweight="bold")
     ax.set_title(
-        "VRAM Kullanımı vs Doğruluk (Efficiency Frontier)",
+        "Değerlendirme VRAM'i vs Doğruluk",
         fontsize=14, fontweight="bold", pad=15,
     )
     ax.grid(True, alpha=0.3)
 
+    add_footnote(
+        fig,
+        "VRAM, batch=4 üretim sırasında ölçüldü; büyük kısmı aktivasyon/KV cache (ağırlıklar ~1 GB). "
+        "Eğitim VRAM'i ölçülmedi.\nBaseline CPU'da çalıştığı için gösterilmiyor.",
+    )
     fig.tight_layout()
     out_path = output_dir / "vram_vs_accuracy.png"
     fig.savefig(out_path)
@@ -262,32 +294,39 @@ def plot_vram_vs_accuracy(reports: dict, methods: list[str], output_dir: Path):
     return out_path
 
 
-def plot_training_time_comparison(reports: dict, methods: list[str], output_dir: Path):
+def plot_training_time_comparison(
+    reports: dict, methods: list[str], comparable_methods: list[str], output_dir: Path
+):
     """Eğitim süresi ve throughput karşılaştırması (yan yana bar chart)."""
     # Sadece eğitilmiş modelleri al
     trained_methods = [m for m in methods if "training_metrics" in reports[m] or m != "baseline"]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
-    # JSON'da training_metrics yoksa rapordaki ölçülen/tahmini süreleri kullan
-    KNOWN_TRAIN_HOURS = {
-        "lora": 4.6,
-        "qlora": 3.8,
-        "dora": 4.8,
-        "full_ft": 8.0,
+    # JSON'da training_metrics yoksa kayıt dışı/tahmini süreleri kullan. Bunlar
+    # grafikte taralı (hatch) ve etiketli gösterilir, ölçülmüş gibi sunulmaz.
+    UNRECORDED_TRAIN_HOURS = {
+        "qlora": (3.8, "kayıtlı değil"),
+        "dora": (4.8, "kayıtlı değil"),
+        "full_ft": (8.0, "tahmin"),
     }
 
     train_times = []
     train_labels = []
     train_colors = []
+    train_notes = []
     for method in trained_methods:
         tm = reports[method].get("training_metrics", {})
         t = tm.get("train_runtime_seconds", 0)
-        hours = t / 3600 if t > 0 else KNOWN_TRAIN_HOURS.get(method, 0)
+        if t > 0:
+            hours, note = t / 3600, "ölçüldü"
+        else:
+            hours, note = UNRECORDED_TRAIN_HOURS.get(method, (0, ""))
         if hours > 0:
             train_times.append(hours)
             train_labels.append(METHOD_LABELS.get(method, method))
             train_colors.append(METHOD_COLORS.get(method, "#888"))
+            train_notes.append(note)
 
     if train_times:
         bars = ax1.barh(
@@ -295,12 +334,16 @@ def plot_training_time_comparison(reports: dict, methods: list[str], output_dir:
             color=train_colors, edgecolor="white",
             linewidth=0.5, alpha=0.9,
         )
-        for bar, val in zip(bars, train_times):
+        for bar, val, note in zip(bars, train_times, train_notes):
+            if note != "ölçüldü":
+                bar.set_hatch("//")
+                bar.set_alpha(0.45)
             ax1.text(
                 bar.get_width() + 0.05, bar.get_y() + bar.get_height() / 2,
-                f"{val:.1f}h", ha="left", va="center",
-                fontsize=10, fontweight="bold",
+                f"{val:.1f}h ({note})", ha="left", va="center",
+                fontsize=9, fontweight="bold",
             )
+        ax1.set_xlim(0, max(train_times) * 1.6)
         ax1.set_xlabel("Eğitim Süresi (saat)", fontsize=11, fontweight="bold")
         ax1.set_title("Training Time", fontsize=13, fontweight="bold")
         ax1.grid(axis="x", alpha=0.3)
@@ -309,13 +352,16 @@ def plot_training_time_comparison(reports: dict, methods: list[str], output_dir:
     throughputs = []
     tp_labels = []
     tp_colors = []
-    for method in methods:
+    tokens_per_sample = []
+    for method in comparable_methods:
         pm = reports[method].get("performance_metrics", {})
         tp = pm.get("throughput_tokens_per_sec", 0)
         if tp > 0:
             throughputs.append(tp)
             tp_labels.append(METHOD_LABELS.get(method, method))
             tp_colors.append(METHOD_COLORS.get(method, "#888"))
+            n = pm.get("total_samples", 0)
+            tokens_per_sample.append(pm.get("total_generated_tokens", 0) / n if n else 0)
 
     if throughputs:
         bars = ax2.barh(
@@ -323,12 +369,13 @@ def plot_training_time_comparison(reports: dict, methods: list[str], output_dir:
             color=tp_colors, edgecolor="white",
             linewidth=0.5, alpha=0.9,
         )
-        for bar, val in zip(bars, throughputs):
+        for bar, val, tps in zip(bars, throughputs, tokens_per_sample):
             ax2.text(
                 bar.get_width() + 0.3, bar.get_y() + bar.get_height() / 2,
-                f"{val:.1f}", ha="left", va="center",
-                fontsize=10, fontweight="bold",
+                f"{val:.1f} tok/s · {tps:.0f} token/örnek", ha="left", va="center",
+                fontsize=9, fontweight="bold",
             )
+        ax2.set_xlim(0, max(throughputs) * 1.8)
         ax2.set_xlabel("Inference Throughput (tokens/sec)", fontsize=11, fontweight="bold")
         ax2.set_title("Inference Speed", fontsize=13, fontweight="bold")
         ax2.grid(axis="x", alpha=0.3)
@@ -336,6 +383,12 @@ def plot_training_time_comparison(reports: dict, methods: list[str], output_dir:
     fig.suptitle(
         "Performans Karşılaştırması — Training Time & Inference Speed",
         fontsize=14, fontweight="bold", y=1.02,
+    )
+    add_footnote(
+        fig,
+        "Sol: taralı çubuklar metrik dosyalarında kayıtlı olmayan veya tahmini sürelerdir. "
+        "Sağ: 256 token/örnek, modelin hiç durmadığı ve max_new_tokens sınırına kadar ürettiği anlamına gelir;\n"
+        "bu modellerin tok/s değeri kullanılabilir cevap hızını göstermez. Baseline (CPU, 5 örnek) gösterilmiyor.",
     )
     fig.tight_layout()
     out_path = output_dir / "performance_comparison.png"
@@ -507,11 +560,13 @@ def main():
     setup_style()
 
     # Grafikleri çiz
+    comparable = get_comparable_methods(reports, methods)
+
     print("[PLOT] Grafikler uretiliyor...")
-    plot_quality_bar_chart(reports, methods, output_dir)
-    plot_radar_chart(reports, methods, output_dir)
-    plot_vram_vs_accuracy(reports, methods, output_dir)
-    plot_training_time_comparison(reports, methods, output_dir)
+    plot_quality_bar_chart(reports, comparable, output_dir)
+    plot_radar_chart(reports, comparable, output_dir)
+    plot_vram_vs_accuracy(reports, comparable, output_dir)
+    plot_training_time_comparison(reports, methods, comparable, output_dir)
     plot_parameter_comparison(reports, methods, output_dir)
 
     # Konsol özet tablosu

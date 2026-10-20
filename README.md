@@ -101,6 +101,7 @@ The evaluation pipeline is independent from the training implementation, allowin
 > - **Fine-Tuning Dataset:** `NousResearch/hermes-function-calling-v1` (1,893 positive examples + 250 synthetic negative rejection samples)
 > - **Evaluation Set:** 100 balanced holdout samples (80 tool-required / 20 negative rejection)
 > - **Hardware:** Single NVIDIA Tesla T4 GPU (16 GB VRAM) — Google Colab
+> - **Runs:** One training run per method (seed 42), no repeated seeds or confidence intervals. See [Limitations](#limitations).
 
 ---
 
@@ -108,15 +109,17 @@ The evaluation pipeline is independent from the training implementation, allowin
 
 The benchmark measures tool invocation capabilities across four essential dimensions: correct tool selection, field-level argument exact match, strict JSON syntax compliance, and the ability to refrain from calling tools when unnecessary (negative rejection).
 
-| Method | Tool Selection (Pos) | Arg. Accuracy (Pos) | JSON Validity (Pos) | Neg. Rejection | Overall Accuracy |
+| Method | Tool Selection (Pos, n=80) | Arg. Accuracy (Pos) | JSON Validity (Pos) | Neg. Rejection (n=20) | Overall Accuracy |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| **Baseline (0-shot)** | 0.0% | 0.0% | 0.0% | 100.0%* | 20.0% |
+| **Baseline (0-shot)** | —† | —† | —† | —† | —† |
 | **LoRA (16-bit)** | 8.75% | 7.71% | 11.25% | 95.0% | 26.0% |
 | **DoRA (Directional)** | 13.75% | 11.63% | 15.00% | 95.0% | 30.0% |
-| **QLoRA (4-bit NF4)** | 46.25% | 37.48% | 46.25% | 85.0% | 54.0% |
+| **QLoRA (4-bit NF4)** | 46.25%‡ | 37.48% | 46.25%‡ | 85.0% | 54.0% |
 | **Full Fine-Tuning** | **92.50%** 🏆 | **44.33%** 🏆 | **83.75%** 🏆 | **95.0%** | **93.0%** 🏆 |
 
-*\* Baseline model never produces tool calls, trivially yielding 100% rejection on negative prompts.*
+*† The baseline has **not** been evaluated on the 100-sample eval set. It was only run on a 5-sample smoke test (2 tool / 3 no-tool, on CPU — [`reports/baseline_metrics.json`](reports/baseline_metrics.json)): 0/2 correct tool calls, 3/3 correct rejections. Numbers shown here earlier were extrapolated, not measured. **TODO:** re-run `scripts/run_baseline.py` on the full `eval_subset.jsonl` on the same T4 GPU.*
+
+*‡ The parser also counts bare `{"name": ...}` JSON objects without `<tool_call>` tags as tool calls. Many QLoRA outputs are of this form (e.g. `�\n{"name": "find_astronomy_apps", ...}` followed by garbage), so its score would be lower under a strict, tag-only parser. See [Limitations](#limitations).*
 
 #### 📊 Per-Metric Quality Comparison Across Positive & Negative Sets
 
@@ -126,7 +129,7 @@ Below is the comparative breakdown of model performance on positive tool calling
   <img src="reports/figures/quality_bar_chart.png" alt="Quality Metrics Comparison Bar Chart" width="100%">
 </p>
 
-> **Key Takeaway:** Full Fine-Tuning is the only approach capable of robustly instilling structured output syntax into a 0.5B model, achieving **92.5%** tool selection and **83.8%** valid JSON output. Adapter methods restricted to attention layers struggle to overwrite the base model's default text emission behavior.
+> **Key Takeaway:** In this setup, Full Fine-Tuning was the only method that reliably learned the structured output format on the 0.5B model, reaching **92.5%** tool selection and **83.8%** valid JSON. The adapters were applied to attention layers only (`q/k/v/o_proj`, r=16), and in that configuration they did not learn the format reliably. Whether LoRA on all linear layers (MLP included) closes the gap was not tested.
 
 #### 🕸️ 5-Axis Behavioral Capability Profile
 
@@ -136,21 +139,25 @@ To assess model balance across all functional dimensions, we plot a normalized 5
   <img src="reports/figures/quality_radar_chart.png" alt="Quality Metrics Radar Profile" width="75%">
 </p>
 
-> **Key Takeaway:** While QLoRA expands the functional surface area compared to standard LoRA/DoRA, Full Fine-Tuning envelops nearly the entire operational polygon without compromising negative rejection reliability (95.0%).
+> **Key Takeaway:** QLoRA covers a larger area than LoRA/DoRA, and Full Fine-Tuning covers nearly the whole polygon while keeping 95.0% negative rejection. Note that the rejection axis rests on only 20 negative samples (95% = 1 error, 85% = 3 errors).
 
 ---
 
-### 2. Efficiency Frontier: Compute, Memory & Throughput
+### 2. Efficiency: Compute, Memory & Throughput
 
-Deploying function calling models into production requires balancing accuracy against hardware resource consumption, token latency, and VRAM limits.
+> ⚠️ **Read this table with care.** These numbers come from the evaluation run (batch size 4, `max_new_tokens=256`), not from training. Most of the differences between methods reflect output behaviour and weight storage, not the fine-tuning methods themselves. Details below the table.
 
-| Method | Peak VRAM (Eval) | Generation Speed | Latency | Trainable Weights | Checkpoint Footprint |
-|:---|:---:|:---:|:---:|:---:|:---:|
-| **Baseline** | N/A (CPU) | 9.78 tok/s | 26,175 ms | 0 (0.0%) | 988 MB |
-| **LoRA** | 8,922 MB | 34.00 tok/s | 7,528 ms | 2.16M (0.43%) | ~8.5 MB adapter |
-| **DoRA** | 8,922 MB | 29.60 tok/s | 8,649 ms | 2.21M (0.45%) | ~8.7 MB adapter |
-| **QLoRA** | **8,416 MB** ⚡ | **36.89 tok/s** ⚡ | **6,939 ms** ⚡ | 2.16M (0.43%) | ~8.5 MB adapter |
-| **Full FT** | 8,914 MB | 28.13 tok/s | 4,752 ms | 494M (100.0%) | 988 MB full weights |
+| Method | Peak VRAM (Eval) | Generation Speed | Latency | Generated Tokens (100 samples) | Trainable Weights | Checkpoint Footprint |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Baseline** | N/A (CPU, 5 samples) | 9.78 tok/s | 26,175 ms | 1,280 (5 samples) | 0 (0.0%) | 988 MB |
+| **LoRA** | 8,922 MB | 34.00 tok/s | 7,528 ms | 25,600 (always 256) | 2.16M (0.43%) | ~8.5 MB adapter |
+| **DoRA** | 8,922 MB | 29.60 tok/s | 8,649 ms | 25,600 (always 256) | 2.21M (0.45%) | ~8.7 MB adapter |
+| **QLoRA** | 8,416 MB | 36.89 tok/s | 6,939 ms | 25,600 (always 256) | 2.16M (0.43%) | ~8.5 MB adapter |
+| **Full FT** | 8,914 MB | 28.13 tok/s | **4,752 ms** | 13,368 | 494M (100.0%) | 988 MB full weights |
+
+* **Throughput and latency:** LoRA, DoRA and QLoRA generated exactly 256 tokens for every sample. They never emitted `<|im_end|>`, so they kept generating until the token limit, typically producing repetitive garbage (`sourceMapping`, `ToInt`, …) after the answer. Their tok/s values describe that runaway generation and should not be used to rank the methods by speed. Full FT learned to stop, which is why it has the lowest latency per sample.
+* **Peak VRAM:** This is `torch.cuda.max_memory_allocated()` during batched generation over prompts of up to ~2k tokens. Activations, KV cache and logits dominate it; the model weights are only ~1 GB. The ~500 MB QLoRA difference is roughly the size saving of 4-bit weights. **Training VRAM**, where QLoRA's main advantage would show, was not recorded.
+* The baseline row was run on CPU with 5 samples and cannot be compared to the other rows.
 
 #### 📈 VRAM vs. Accuracy Pareto Frontier
 
@@ -160,9 +167,9 @@ Evaluating the trade-off between peak memory utilization and positive tool selec
   <img src="reports/figures/vram_vs_accuracy.png" alt="Efficiency Frontier: VRAM vs Tool Selection Accuracy" width="100%">
 </p>
 
-> **Key Takeaway:** QLoRA defines the Pareto efficiency point among parameter-efficient adapters, consuming the lowest VRAM (8,416 MB) while delivering 46.25% accuracy. However, Full Fine-Tuning establishes the global performance ceiling, doubling accuracy at essentially equivalent inference VRAM (8,914 MB).
+> **Key Takeaway:** Eval-time VRAM is nearly the same for all methods (8.4–8.9 GB) because activations dominate it, so this chart mainly separates the methods on accuracy. Full FT roughly doubles QLoRA's tool selection at about the same inference memory. The chart says nothing about training memory.
 
-#### ⏱️ Training Compute Investment vs. Inference Latency
+#### ⏱️ Training Time vs. Inference Throughput
 
 Examining the relationship between total training time (GPU hours on Tesla T4) and runtime token throughput:
 
@@ -170,7 +177,7 @@ Examining the relationship between total training time (GPU hours on Tesla T4) a
   <img src="reports/figures/performance_comparison.png" alt="Training Time and Inference Throughput Comparison" width="100%">
 </p>
 
-> **Key Takeaway:** QLoRA trains fastest (~3.8h) and delivers the highest generation throughput (36.89 tok/s). Full Fine-Tuning requires ~8.0h with gradient checkpointing, but yields the lowest overall per-sample latency (4,752 ms) by generating clean, concise outputs without falling into repetitive hallucination loops.
+> **Key Takeaway:** Only LoRA's training time is recorded in the metrics files (4h 36m, [`reports/lora_metrics.json`](reports/lora_metrics.json)). The QLoRA (~3h 48m) and DoRA (~4h 50m) values are not stored in `reports/*_metrics.json`, and the Full FT value (~8h) is an estimate. The throughput side of this chart is affected by the runaway-generation issue described above: higher tok/s for the adapters does not mean faster useful answers. Full FT has the lowest latency per sample (4,752 ms) because it stops after the tool call.
 
 #### ⚖️ Parameter Allocation (Trainable vs. Frozen Backbone)
 
@@ -180,32 +187,47 @@ Visualizing the scale of parameter updates across methods on a logarithmic scale
   <img src="reports/figures/parameter_comparison.png" alt="Trainable vs Total Parameters (Log Scale)" width="100%">
 </p>
 
-> **Key Takeaway:** PEFT adapters restrict updates to ~2.16M parameters (0.43%). In sub-billion parameter models, this budget is inadequate for restructuring the network's output grammar into `<tool_call>` tags; modifying the entire 494M parameter space is essential for reliable function calling.
+> **Key Takeaway:** The adapters update ~2.16M parameters (0.43%), and only in attention projections. In this setup that was not enough to make the 0.5B model emit `<tool_call>` blocks reliably, while updating all 494M parameters was. Whether a larger adapter budget (higher rank, or MLP layers included) would be enough was not tested.
 
 ---
 
-### 3. Key Scientific & Empirical Insights
+### 3. Key Findings
 
-1. **Full Fine-Tuning is the Definitive Winner for Sub-Billion Models (92.5%):**
-   Unlike larger models (e.g. 7B+), 0.5B base models lack latent instruction capacity. Updating all linear layers—including MLP feed-forward blocks—is required to learn XML formatting and nested JSON schemas.
-2. **Quantization Acts as Implicit Regularization (QLoRA > DoRA > LoRA):**
-   4-bit NF4 quantized weights outperformed 16-bit LoRA by over 5x (46.25% vs 8.75%). Quantization dampens noisy pre-training web artifacts (e.g., JavaScript/HTML source mapping hallucinations), allowing the adapter to specialize effectively.
-3. **DoRA Provides Marginal Gains Over LoRA (+5.0%):**
-   Decoupling weight magnitude and directional updates offers a modest improvement over standard LoRA (13.75% vs 8.75%), but fails to overcome the bottleneck of freezing feed-forward weights.
-4. **Zero-Hallucination Negative Rejection (85%–95%):**
-   Fine-tuning did not cause over-triggering. When prompted with standard non-tool queries, all fine-tuned models correctly replied in natural language without fabricating function calls.
+1. **Full Fine-Tuning clearly won in this setup (92.5% vs. at most 46.25%):**
+   Full FT updates every layer, including the MLP blocks; the adapters touched only attention projections. The gap is large enough to be meaningful even with n=80. It is a comparison against *attention-only, r=16* adapters, though, not against PEFT in general.
+2. **QLoRA beat LoRA (46.25% vs 8.75%), but the cause is unknown:**
+   The two runs should differ only in 4-bit quantization, yet a 5x gap is unusually large. Other differences between the runs are possible: the QLoRA notebook used `bnb_4bit_compute_dtype: float16` while `configs/qlora.yaml` says `bfloat16`, and LoRA took longer to train than QLoRA, which is the reverse of what is usually expected. With a single seed, this result does not support the claim that "quantization acts as regularization". It should be re-checked before any explanation is attached to it. Part of QLoRA's score also comes from the lenient parser (bare JSON without `<tool_call>` tags).
+3. **DoRA was slightly better than LoRA (13.75% vs 8.75%):**
+   That is 11 vs 7 correct samples out of 80, a 4-sample difference from a single run. It is within what run-to-run noise could produce, so it is not evidence of a real DoRA advantage.
+4. **Negative rejection was 85–95%, but not hallucination-free:**
+   Fine-tuning did not cause heavy over-triggering. Still, LoRA, DoRA and Full FT each made an unnecessary tool call on 1 of 20 negative prompts (5%), and QLoRA on 3 of 20 (15%). The negatives are also built from a small fixed pool of question templates shared between train and val, so this score may partly reflect memorization (see [Limitations](#limitations)).
 
-> 📊 Detailed forensic investigation & error analysis: [reports/final_benchmark_report.md](reports/final_benchmark_report.md)
+> 📊 Per-method details and error analysis: [reports/final_benchmark_report.md](reports/final_benchmark_report.md)
 
 ## Experimental Design
 
 The benchmark investigated the following questions:
 
-* Can parameter-efficient fine-tuning achieve performance comparable to Full Fine-Tuning? → **No.** Full FT is 2x better.
-* How much VRAM can QLoRA save compared with LoRA? → **~500 MB** savings with better quality.
-* Does DoRA provide measurable improvements over standard LoRA? → **+5%** marginal improvement.
-* What is the relationship between training cost and final accuracy? → **Full FT is worth the cost** for small models.
-* Which method provides the best quality-to-resource trade-off? → **QLoRA** for adapters, **Full FT** for max quality.
+* Can parameter-efficient fine-tuning achieve performance comparable to Full Fine-Tuning? → **Not in this setup.** Attention-only r=16 adapters reached at most half of Full FT's tool selection. All-linear LoRA was not tested.
+* How much VRAM can QLoRA save compared with LoRA? → **Not measured.** Training VRAM was not recorded. At evaluation time the difference was ~500 MB, roughly the 4-bit weight saving.
+* Does DoRA provide measurable improvements over standard LoRA? → **No measurable difference.** +4 correct samples out of 80 from a single run is within noise.
+* What is the relationship between training cost and final accuracy? → **Partly answered.** Full FT was by far the most accurate, but only LoRA's training time was actually recorded.
+* Which method provides the best quality-to-resource trade-off? → **Full FT** for quality on this 0.5B model. Among the adapters QLoRA scored highest, but why it beat LoRA is still unresolved.
+
+<a name="limitations"></a>
+
+## Limitations
+
+* **Baseline not measured on the eval set:** only a 5-sample CPU smoke test exists. Re-run `scripts/run_baseline.py` on the full 100-sample `eval_subset.jsonl` on GPU.
+* **Single seed, small eval set:** one run per method, 80 positive and 20 negative samples, no confidence intervals. Differences of a few percentage points (especially on the 20 negatives, where one sample = 5%) are not reliable.
+* **Confounded PEFT comparison:** the adapters target only `q/k/v/o_proj`, while Full FT updates all layers. Full FT also uses a different learning rate and batch layout (2e-5, 1×8 vs 2e-4, 2×4).
+* **Lenient output parser:** bare `{"name": ...}` JSON without `<tool_call>` tags is accepted as a tool call. Under a strict parser the adapter scores (especially QLoRA) would likely drop.
+* **Only the first tool call is scored:** extra or missing calls in parallel tool-call examples are not penalized.
+* **Synthetic negatives may be memorized:** the ~250 negatives come from a small fixed set of question/answer templates, and train and val share the same pool.
+* **Runaway generation in adapter models:** LoRA, DoRA and QLoRA never emit `<|im_end|>` and always hit `max_new_tokens=256`. This distorts the throughput and latency numbers, and it is itself a quality problem.
+* **Efficiency metrics are eval-time only:** peak VRAM is measured during generation. Training VRAM was not recorded, and training time was recorded only for LoRA.
+* **Config/notebook mismatch:** `configs/qlora.yaml` sets `bnb_4bit_compute_dtype: bfloat16`, but the QLoRA Colab notebook actually ran with `float16`.
+* **Truncation:** ~36.5% of training examples exceed `max_seq_len=2048`. The tail-preserving truncation keeps the assistant answer but cuts the beginning of the tool schemas.
 
 ## Repository Structure
 
@@ -257,7 +279,9 @@ This allows experiments to be reproduced and new models or fine-tuning methods t
 
 ## Status
 
-✅ **Project completed.** All four fine-tuning methods (LoRA, QLoRA, DoRA, Full FT) have been benchmarked and analyzed.
+✅ **Experiments completed.** All four fine-tuning methods (LoRA, QLoRA, DoRA, Full FT) have been trained and evaluated.
+
+⏳ **Open:** re-run the baseline on the full eval set (see [Limitations](#limitations)).
 
 [⬆️ Back to top](#tool-calling-fine-tuning-benchmark)
 
@@ -337,6 +361,7 @@ Evaluation pipeline'ı training kodundan bağımsız tasarlanmıştır. Böylece
 > - **Fine-Tuning Veri Seti:** `NousResearch/hermes-function-calling-v1` (1.893 pozitif örnek + 250 sentetik negatif ret örneği)
 > - **Değerlendirme Kümesi:** 100 dengeli test örneği (80 tool gerektiren / 20 negatif ret)
 > - **Donanım:** Tek NVIDIA Tesla T4 GPU (16 GB VRAM) — Google Colab
+> - **Çalıştırma sayısı:** Her yöntem için tek eğitim (seed 42); tekrar eden seed veya güven aralığı yok. Bkz. [Sınırlamalar](#sınırlamalar).
 
 ---
 
@@ -344,15 +369,17 @@ Evaluation pipeline'ı training kodundan bağımsız tasarlanmıştır. Böylece
 
 Benchmark, modelin tool çağırma yeteneğini dört kritik boyutta ölçer: doğru tool seçimi, alan düzeyinde argüman eşleşmesi, katı JSON sözdizimi geçerliliği ve tool gerekmeyen durumlarda doğru ret davranışı (negatif rejection).
 
-| Yöntem | Tool Seçimi (Pozitif) | Argüman Doğruluğu (Pozitif) | JSON Geçerliliği (Pozitif) | Negatif Ret (Doğru Ret) | Genel Doğruluk |
+| Yöntem | Tool Seçimi (Pozitif, n=80) | Argüman Doğruluğu (Pozitif) | JSON Geçerliliği (Pozitif) | Negatif Ret (n=20) | Genel Doğruluk |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| **Baseline (0-shot)** | %0.0 | %0.0 | %0.0 | %100.0* | %20.0 |
+| **Baseline (0-shot)** | —† | —† | —† | —† | —† |
 | **LoRA (16-bit)** | %8.75 | %7.71 | %11.25 | %95.0 | %26.0 |
 | **DoRA (Directional)** | %13.75 | %11.63 | %15.00 | %95.0 | %30.0 |
-| **QLoRA (4-bit NF4)** | %46.25 | %37.48 | %46.25 | %85.0 | %54.0 |
+| **QLoRA (4-bit NF4)** | %46.25‡ | %37.48 | %46.25‡ | %85.0 | %54.0 |
 | **Full Fine-Tuning** | **%92.50** 🏆 | **%44.33** 🏆 | **%83.75** 🏆 | **%95.0** | **%93.0** 🏆 |
 
-*\* Baseline model hiçbir zaman tool çağırmadığı için negatif örneklerdeki ret başarısı matematiksel olarak %100'dür.*
+*† Baseline, 100 örneklik eval setinde **değerlendirilmedi**. Yalnızca CPU'da 5 örneklik bir deneme çalıştırması var (2 tool / 3 tool-gerektirmeyen — [`reports/baseline_metrics.json`](reports/baseline_metrics.json)): 0/2 doğru tool çağrısı, 3/3 doğru ret. Burada daha önce gösterilen değerler ölçülmemiş, tahmin edilmişti. **Yapılacak:** `scripts/run_baseline.py`, tüm `eval_subset.jsonl` üzerinde aynı T4 GPU'da yeniden çalıştırılmalı.*
+
+*‡ Parser, `<tool_call>` etiketi olmayan çıplak `{"name": ...}` JSON nesnelerini de tool çağrısı olarak sayıyor. QLoRA çıktılarının çoğu bu biçimde (ör. `�\n{"name": "find_astronomy_apps", ...}` ve ardından anlamsız metin). Yalnızca etiketleri kabul eden sıkı bir parser'la bu skor daha düşük çıkar. Bkz. [Sınırlamalar](#sınırlamalar).*
 
 #### 📊 Pozitif ve Negatif Dağılımlarda Metrik Karşılaştırması
 
@@ -362,7 +389,7 @@ Aşağıdaki grafik, yöntemlerin tool çağırma kabiliyeti ile yanlış tetikl
   <img src="reports/figures/quality_bar_chart.png" alt="Kalite Metrikleri Karşılaştırma Grafiği" width="100%">
 </p>
 
-> **Temel Çıkarım:** Full Fine-Tuning, 0.5B ölçeğindeki bir modele yapılandırılmış çıktı sözdizimini kalıcı olarak öğretebilen tek yöntemdir (**%92.5** tool seçimi ve **%83.8** geçerli JSON). Sadece attention katmanlarını hedefleyen adapter yöntemleri taban modelin serbest metin üretim alışkanlığını kıramamaktadır.
+> **Temel Çıkarım:** Bu kurulumda, 0.5B modele yapılandırılmış çıktı formatını güvenilir şekilde öğreten tek yöntem Full Fine-Tuning oldu (**%92.5** tool seçimi, **%83.8** geçerli JSON). Adapter'lar yalnızca attention katmanlarına uygulandı (`q/k/v/o_proj`, r=16) ve bu yapılandırmayla formatı güvenilir şekilde öğrenemediler. MLP dahil tüm lineer katmanlara uygulanan LoRA'nın bu farkı kapatıp kapatmadığı test edilmedi.
 
 #### 🕸️ 5 Eksenli Davranış Profili (Radar Analizi)
 
@@ -372,21 +399,25 @@ Modellerin tüm fonksiyonel boyutlardaki dengesini incelemek amacıyla; tool se�
   <img src="reports/figures/quality_radar_chart.png" alt="Kalite Metrikleri Radar Profili" width="75%">
 </p>
 
-> **Temel Çıkarım:** QLoRA, standart LoRA ve DoRA'ya kıyasla belirgin şekilde daha geniş bir alanı kapsarken; Full Fine-Tuning, negatif ret güvenliğinden (%95.0) ödün vermeden tüm kalite eksenlerinde açık ara liderliği almaktadır.
+> **Temel Çıkarım:** QLoRA, LoRA ve DoRA'dan daha geniş bir alanı kapsıyor; Full Fine-Tuning ise %95.0 negatif reti korurken neredeyse tüm çokgeni dolduruyor. Ret ekseninin yalnızca 20 negatif örneğe dayandığını unutmayın (%95 = 1 hata, %85 = 3 hata).
 
 ---
 
-### 2. Verimlilik Sınırı: Hesaplama Maliyeti, Bellek ve Hız
+### 2. Verimlilik: Hesaplama Maliyeti, Bellek ve Hız
 
-Tool calling modellerini canlı ortama (production) alırken doğruluk ile donanım kaynağı tüketimi, gecikme ve VRAM sınırları dengelenmelidir.
+> ⚠️ **Bu tabloyu dikkatli okuyun.** Değerler eğitimden değil, değerlendirme çalıştırmasından geliyor (batch boyutu 4, `max_new_tokens=256`). Yöntemler arasındaki farkların çoğu, fine-tuning yöntemlerinin kendisini değil, çıktı davranışını ve ağırlıkların saklanma biçimini yansıtıyor. Ayrıntılar tablonun altında.
 
-| Yöntem | Peak VRAM (Eval) | Üretim Hızı (Throughput) | Gecikme (Latency) | Eğitilebilir Ağırlık | Model/Adaptör Boyutu |
-|:---|:---:|:---:|:---:|:---:|:---:|
-| **Baseline** | N/A (CPU) | 9.78 tok/s | 26,175 ms | 0 (%0.0) | 988 MB |
-| **LoRA** | 8,922 MB | 34.00 tok/s | 7,528 ms | 2.16M (%0.43) | ~8.5 MB adapter |
-| **DoRA** | 8,922 MB | 29.60 tok/s | 8,649 ms | 2.21M (%0.45) | ~8.7 MB adapter |
-| **QLoRA** | **8,416 MB** ⚡ | **36.89 tok/s** ⚡ | **6,939 ms** ⚡ | 2.16M (%0.43) | ~8.5 MB adapter |
-| **Full FT** | 8,914 MB | 28.13 tok/s | 4,752 ms | 494M (%100.0) | 988 MB tam model |
+| Yöntem | Peak VRAM (Eval) | Üretim Hızı (Throughput) | Gecikme (Latency) | Üretilen Token (100 örnek) | Eğitilebilir Ağırlık | Model/Adaptör Boyutu |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Baseline** | N/A (CPU, 5 örnek) | 9.78 tok/s | 26,175 ms | 1,280 (5 örnek) | 0 (%0.0) | 988 MB |
+| **LoRA** | 8,922 MB | 34.00 tok/s | 7,528 ms | 25,600 (hep 256) | 2.16M (%0.43) | ~8.5 MB adapter |
+| **DoRA** | 8,922 MB | 29.60 tok/s | 8,649 ms | 25,600 (hep 256) | 2.21M (%0.45) | ~8.7 MB adapter |
+| **QLoRA** | 8,416 MB | 36.89 tok/s | 6,939 ms | 25,600 (hep 256) | 2.16M (%0.43) | ~8.5 MB adapter |
+| **Full FT** | 8,914 MB | 28.13 tok/s | **4,752 ms** | 13,368 | 494M (%100.0) | 988 MB tam model |
+
+* **Hız ve gecikme:** LoRA, DoRA ve QLoRA her örnekte tam olarak 256 token üretti. Hiçbiri `<|im_end|>` üretmediği için token sınırına kadar üretmeye devam ettiler ve cevaptan sonra genellikle tekrarlayan anlamsız metin ürettiler (`sourceMapping`, `ToInt`, …). Bu modellerin tok/s değerleri bu kontrolsüz üretimi ölçüyor; yöntemleri hıza göre sıralamak için kullanılmamalı. Full FT durmayı öğrendi; örnek başına en düşük gecikmenin nedeni bu.
+* **Peak VRAM:** ~2k token'a kadar uzanan prompt'lar üzerinde batch'li üretim sırasında ölçülen `torch.cuda.max_memory_allocated()` değeri. Bu değerin büyük kısmı aktivasyonlardan, KV cache'ten ve logit'lerden geliyor; model ağırlıkları yalnızca ~1 GB. QLoRA'daki ~500 MB'lık fark, kabaca 4-bit ağırlıkların sağladığı boyut tasarrufu. QLoRA'nın asıl avantajının görüneceği **eğitim VRAM'i** kaydedilmedi.
+* Baseline satırı CPU'da ve 5 örnekle çalıştırıldı; diğer satırlarla karşılaştırılamaz.
 
 #### 📈 VRAM vs. Doğruluk Pareto Verimlilik Sınırı
 
@@ -396,9 +427,9 @@ Pik bellek kullanımı ile pozitif tool seçim doğruluğu arasındaki ilişki:
   <img src="reports/figures/vram_vs_accuracy.png" alt="Verimlilik Sınırı: VRAM vs Doğruluk" width="100%">
 </p>
 
-> **Temel Çıkarım:** QLoRA, PEFT adaptörleri arasında en düşük VRAM (8.416 MB) ile %46.25 doğruluk sunarak en yüksek verimlilik noktasını temsil eder. Ancak Full Fine-Tuning, çıkarım sırasında neredeyse aynı VRAM seviyesinde (8.914 MB) doğruluğu 2 katına çıkararak mutlak kalite tavanını belirler.
+> **Temel Çıkarım:** Değerlendirme sırasındaki VRAM tüm yöntemlerde neredeyse aynı (8.4–8.9 GB), çünkü değerin büyük kısmı aktivasyonlardan geliyor. Bu yüzden grafik yöntemleri esas olarak doğrulukta ayırıyor: Full FT, aşağı yukarı aynı çıkarım belleğiyle QLoRA'nın tool seçimini yaklaşık 2 katına çıkarıyor. Grafik eğitim belleği hakkında bir şey söylemiyor.
 
-#### ⏱️ Eğitim Yatırımı vs. Çıkarım Gecikmesi
+#### ⏱️ Eğitim Süresi vs. Çıkarım Hızı
 
 Toplam eğitim süresi (Tesla T4 GPU saati) ile çalışma anı token üretim hızının karşılaştırması:
 
@@ -406,7 +437,7 @@ Toplam eğitim süresi (Tesla T4 GPU saati) ile çalışma anı token üretim h�
   <img src="reports/figures/performance_comparison.png" alt="Eğitim Süresi ve Çıkarım Hızı Karşılaştırması" width="100%">
 </p>
 
-> **Temel Çıkarım:** QLoRA en hızlı eğitilen (~3.8h) ve en yüksek çıkarım hızına (36.89 tok/s) sahip modeldir. Full Fine-Tuning gradient checkpointing nedeniyle ~8.0h eğitim süresi gerektirse de, gereksiz döngü ve halüsinasyon üretmediği için örnek başına en düşük gecikmeyi (4.752 ms) sağlar.
+> **Temel Çıkarım:** Metrik dosyalarında eğitim süresi yalnızca LoRA için kayıtlı (4s 36dk, [`reports/lora_metrics.json`](reports/lora_metrics.json)). QLoRA (~3s 48dk) ve DoRA (~4s 50dk) değerleri `reports/*_metrics.json` dosyalarında yok; Full FT değeri (~8s) ise tahmin. Grafiğin hız tarafı yukarıda açıklanan kontrolsüz üretim sorunundan etkileniyor: adapter'ların tok/s değerinin yüksek olması, kullanılabilir cevabı daha hızlı ürettikleri anlamına gelmiyor. Full FT, tool çağrısından sonra durduğu için örnek başına en düşük gecikmeye (4.752 ms) sahip.
 
 #### ⚖️ Parametre Dağılımı (Eğitilebilir vs. Dondurulmuş Kapasite)
 
@@ -416,32 +447,47 @@ Yöntemlerin güncellediği parametre sayısının logaritmik ölçekte karşıl
   <img src="reports/figures/parameter_comparison.png" alt="Eğitilebilir ve Toplam Parametre Karşılaştırması (Log Ölçek)" width="100%">
 </p>
 
-> **Temel Çıkarım:** Adaptör yöntemleri toplam parametrelerin yalnızca %0.43'ünü (2.16M / 494M) eğitir. Bu bütçe metin sınıflandırma veya stil aktarımı için yeterli olsa da, 0.5B gibi küçük modellerde `<tool_call>` ve JSON gibi katı sözdizimsel yapıları oturtmak için modelin tüm parametre kapasitesi gereklidir.
+> **Temel Çıkarım:** Adapter'lar yalnızca attention projeksiyonlarında ~2.16M parametreyi (%0.43) güncelliyor. Bu kurulumda bu bütçe, 0.5B modelin `<tool_call>` bloklarını güvenilir şekilde üretmesine yetmedi; 494M parametrenin tamamını güncellemek ise yetti. Daha büyük bir adapter bütçesinin (daha yüksek rank veya MLP katmanlarının da dahil edilmesi) yetip yetmeyeceği test edilmedi.
 
 ---
 
-### 3. Temel Bilimsel ve Mühendislik Çıkarımları
+### 3. Temel Bulgular
 
-1. **Full Fine-Tuning Küçük Modellerde Açık Ara Üstündür (%92.5):**
-   Büyük modellerin (7B+) aksine 0.5B taban modeller örtük instruction yeteneğine sahip değildir. Feed-forward (MLP) blokları da dahil olmak üzere tüm katmanların güncellenmesi, yapılandırılmış tool calling formatının oturması için zorunludur.
-2. **Kuantizasyon Düzenlileştirme (Regularization) Etkisi Yapar (QLoRA > DoRA > LoRA):**
-   4-bit NF4 kuantizasyonu, 16-bit LoRA'ya kıyasla 5 kat daha yüksek başarı sağlamıştır (%46.25 vs %8.75). Kuantizasyon, taban modelin ön-eğitimden gelen web/kod gürültülerini (`sourceMappingUrl` gibi halüsinasyonları) bastırarak adaptörün formata kilitlenmesini sağlamıştır.
-3. **DoRA, LoRA'ya Göre Marjinal İyileşme Sunar (+%5.0):**
-   Ağırlıkların büyüklük (magnitude) ve yön (direction) olarak ayrıştırılması LoRA'ya göre marjinal fayda sağlamış (%13.75 vs %8.75), ancak attention-only kısıtını aşmaya yetmemiştir.
-4. **Sıfır Halüsinasyon ile Negatif Ret Başarısı (%85–%95):**
-   Fine-tuning modellerde aşırı tetiklenmeye (over-triggering) yol açmamıştır. Tool gerektirmeyen standart sorularda modeller doğru şekilde doğal dilde yanıt vermiştir.
+1. **Bu kurulumda Full Fine-Tuning açık ara kazandı (%92.5'e karşı en fazla %46.25):**
+   Full FT, MLP blokları dahil tüm katmanları güncelliyor; adapter'lar ise yalnızca attention projeksiyonlarına dokundu. Fark, n=80 ile bile anlamlı sayılacak kadar büyük. Ancak bu karşılaştırma genel olarak PEFT ile değil, *yalnızca attention'a uygulanan, r=16* adapter'larla yapıldı.
+2. **QLoRA, LoRA'yı geçti (%46.25'e karşı %8.75), ancak nedeni bilinmiyor:**
+   İki çalıştırmanın yalnızca 4-bit kuantizasyonda farklı olması gerekiyordu; buna rağmen 5 katlık bir fark alışılmadık derecede büyük. Çalıştırmalar arasında başka farklar da olabilir: QLoRA notebook'u `bnb_4bit_compute_dtype: float16` kullandı, `configs/qlora.yaml` ise `bfloat16` diyor; ayrıca LoRA'nın eğitimi QLoRA'dan uzun sürdü, normalde tersi beklenir. Tek seed ile bu sonuç "kuantizasyon düzenlileştirme etkisi yapıyor" iddiasını desteklemiyor; bir açıklama yapmadan önce yeniden doğrulanmalı. QLoRA'nın skorunun bir kısmı da gevşek parser'dan geliyor (`<tool_call>` etiketi olmayan çıplak JSON).
+3. **DoRA, LoRA'dan biraz daha iyi çıktı (%13.75'e karşı %8.75):**
+   Bu, 80 örnekte 11'e karşı 7 doğru demek: tek bir çalıştırmada 4 örneklik bir fark. Çalıştırmadan çalıştırmaya oluşabilecek gürültü içinde kalıyor; gerçek bir DoRA avantajının kanıtı değil.
+4. **Negatif ret %85–95 arasında, ama halüsinasyonsuz değil:**
+   Fine-tuning ciddi bir aşırı tetiklenmeye yol açmadı. Yine de LoRA, DoRA ve Full FT, 20 negatif prompt'un 1'inde gereksiz tool çağırdı (%5); QLoRA ise 20'nin 3'ünde (%15). Negatifler ayrıca train ve val arasında paylaşılan küçük, sabit bir soru şablonu havuzundan üretiliyor; bu yüzden skor kısmen ezberi yansıtıyor olabilir (bkz. [Sınırlamalar](#sınırlamalar)).
 
-> 📊 Detaylı adli hata analizi ve metrik dökümleri: [reports/final_benchmark_report.md](reports/final_benchmark_report.md)
+> 📊 Yöntem bazında ayrıntılar ve hata analizi: [reports/final_benchmark_report.md](reports/final_benchmark_report.md)
 
 ## Deney Tasarımı
 
-Benchmark aşağıdaki sorulara cevap verdi:
+Benchmark aşağıdaki sorulara cevap aradı:
 
-* Parameter-efficient fine-tuning, Full Fine-Tuning seviyesinde performans sağlayabilir mi? → **Hayır.** Full FT 2 kat daha iyi.
-* QLoRA, LoRA'ya kıyasla ne kadar VRAM tasarrufu sağlar? → **~500 MB** tasarruf, üstelik daha iyi kalite.
-* DoRA, standart LoRA'ya göre ölçülebilir bir avantaj sağlıyor mu? → **+%5** marjinal iyileşme.
-* Eğitim maliyeti ile model performansı arasındaki ilişki nedir? → Küçük modellerde **Full FT maliyete değer.**
-* Hangi yöntem en iyi dengeyi sunuyor? → Adapter için **QLoRA**, maks. kalite için **Full FT**.
+* Parameter-efficient fine-tuning, Full Fine-Tuning seviyesinde performans sağlayabilir mi? → **Bu kurulumda hayır.** Yalnızca attention'a uygulanan r=16 adapter'lar, Full FT'nin tool seçiminin en fazla yarısına ulaştı. Tüm lineer katmanlara uygulanan LoRA test edilmedi.
+* QLoRA, LoRA'ya kıyasla ne kadar VRAM tasarrufu sağlar? → **Ölçülmedi.** Eğitim VRAM'i kaydedilmedi. Değerlendirme sırasındaki fark ~500 MB, kabaca 4-bit ağırlık tasarrufu kadar.
+* DoRA, standart LoRA'ya göre ölçülebilir bir avantaj sağlıyor mu? → **Ölçülebilir bir fark yok.** Tek çalıştırmada 80 örnekte +4 doğru, gürültü içinde.
+* Eğitim maliyeti ile model performansı arasındaki ilişki nedir? → **Kısmen cevaplandı.** Full FT açık ara en doğru yöntem oldu, ancak gerçekten kaydedilen eğitim süresi yalnızca LoRA'nınki.
+* Hangi yöntem en iyi dengeyi sunuyor? → Bu 0.5B modelde kalite için **Full FT**. Adapter'lar arasında en yüksek skoru QLoRA aldı, ancak LoRA'yı neden geçtiği hâlâ çözülmedi.
+
+<a name="sınırlamalar"></a>
+
+## Sınırlamalar
+
+* **Baseline eval setinde ölçülmedi:** yalnızca CPU'da 5 örneklik bir deneme var. `scripts/run_baseline.py`, 100 örneklik `eval_subset.jsonl`'ın tamamı üzerinde GPU'da yeniden çalıştırılmalı.
+* **Tek seed, küçük eval seti:** her yöntem için tek çalıştırma, 80 pozitif ve 20 negatif örnek, güven aralığı yok. Birkaç puanlık farklar güvenilir değil (özellikle bir örneğin %5'e denk geldiği 20 negatifte).
+* **PEFT karşılaştırmasında karıştırıcı faktör:** adapter'lar yalnızca `q/k/v/o_proj` katmanlarını hedefliyor, Full FT ise tüm katmanları güncelliyor. Full FT'nin öğrenme oranı ve batch düzeni de farklı (2e-5, 1×8'e karşı 2e-4, 2×4).
+* **Gevşek çıktı parser'ı:** `<tool_call>` etiketi olmayan çıplak `{"name": ...}` JSON da tool çağrısı olarak kabul ediliyor. Sıkı bir parser'la adapter skorları (özellikle QLoRA) muhtemelen düşer.
+* **Yalnızca ilk tool çağrısı puanlanıyor:** paralel tool çağrısı içeren örneklerde fazla ya da eksik çağrılar cezalandırılmıyor.
+* **Sentetik negatifler ezberlenmiş olabilir:** ~250 negatif örnek küçük, sabit bir soru-cevap şablonu kümesinden üretiliyor ve train ile val aynı havuzu paylaşıyor.
+* **Adapter modellerinde kontrolsüz üretim:** LoRA, DoRA ve QLoRA hiç `<|im_end|>` üretmiyor ve her seferinde `max_new_tokens=256` sınırına ulaşıyor. Bu durum hız ve gecikme değerlerini bozuyor ve başlı başına bir kalite sorunu.
+* **Verimlilik metrikleri yalnızca değerlendirme zamanına ait:** peak VRAM üretim sırasında ölçüldü. Eğitim VRAM'i kaydedilmedi; eğitim süresi yalnızca LoRA için kaydedildi.
+* **Config ile notebook arasında uyumsuzluk:** `configs/qlora.yaml` `bnb_4bit_compute_dtype: bfloat16` diyor, ancak QLoRA Colab notebook'u gerçekte `float16` ile çalıştı.
+* **Kırpma (truncation):** Eğitim örneklerinin ~%36.5'i `max_seq_len=2048`'i aşıyor. Sondan korumalı kırpma asistan cevabını tutuyor, ancak tool şemalarının başını kesiyor.
 
 ## Proje Yapısı
 
@@ -495,6 +541,8 @@ Bu yapı, deneylerin tekrar üretilebilmesini ve yeni modeller veya fine-tuning 
 
 ## Durum
 
-✅ **Proje tamamlandı.** Dört fine-tuning yönteminin (LoRA, QLoRA, DoRA, Full FT) tamamı benchmark'lanmış ve analiz edilmiştir.
+✅ **Deneyler tamamlandı.** Dört fine-tuning yönteminin (LoRA, QLoRA, DoRA, Full FT) tamamı eğitildi ve değerlendirildi.
+
+⏳ **Açık iş:** baseline'ın tüm eval setinde yeniden çalıştırılması (bkz. [Sınırlamalar](#sınırlamalar)).
 
 [⬆️ Başa dön](#tool-calling-fine-tuning-benchmark)
