@@ -101,7 +101,7 @@ The evaluation pipeline is independent from the training implementation, allowin
 > - **Fine-Tuning Dataset:** `NousResearch/hermes-function-calling-v1` (1,893 positive examples + 250 synthetic negative rejection samples)
 > - **Evaluation Set:** 100 balanced holdout samples (80 tool-required / 20 negative rejection)
 > - **Hardware:** Single NVIDIA Tesla T4 GPU (16 GB VRAM) — Google Colab
-> - **Runs:** One training run per method (seed 42), no repeated seeds or confidence intervals. See [Limitations](#limitations).
+> - **Runs:** One training run per method (seed 42). Every rate comes with a 95% confidence interval over the eval samples ([below](#confidence-intervals)); repeated seeds were not run. See [Limitations](#limitations).
 
 ---
 
@@ -120,6 +120,32 @@ The benchmark measures tool invocation capabilities across four essential dimens
 *† The baseline has **not** been evaluated on the 100-sample eval set. It was only run on a 5-sample smoke test (2 tool / 3 no-tool, on CPU — [`reports/baseline_metrics.json`](reports/baseline_metrics.json)): 0/2 correct tool calls, 3/3 correct rejections. Numbers shown here earlier were extrapolated, not measured. **TODO:** re-run `scripts/run_baseline.py` on the full `eval_subset.jsonl` on the same T4 GPU.*
 
 *‡ The parser also counts bare `{"name": ...}` JSON objects without `<tool_call>` tags as tool calls. Many QLoRA outputs are of this form (e.g. `�\n{"name": "find_astronomy_apps", ...}` followed by garbage), so its score would be lower under a strict, tag-only parser. See [Limitations](#limitations).*
+
+<a name="confidence-intervals"></a>
+
+#### 95% Confidence Intervals
+
+Computed by [`scripts/compute_confidence_intervals.py`](scripts/compute_confidence_intervals.py) from the metric counts; full output in [`reports/confidence_intervals.json`](reports/confidence_intervals.json). Single rates use the Wilson interval; differences between methods use an independent bootstrap (10,000 resamples), which is the conservative choice. These intervals cover the sampling of the 100 eval examples only, not seed-to-seed variance.
+
+| Method | Tool Selection (Pos, n=80) | JSON Validity (Pos, n=80) | Neg. Rejection (n=20) |
+|:---|:---:|:---:|:---:|
+| **LoRA** | 8.75% [4.3, 17.0] | 11.25% [6.0, 20.0] | 95.0% [76.4, 99.1] |
+| **DoRA** | 13.75% [7.9, 23.0] | 15.00% [8.8, 24.4] | 95.0% [76.4, 99.1] |
+| **QLoRA** | 46.25% [35.7, 57.1] | 46.25% [35.7, 57.1] | 85.0% [64.0, 94.8] |
+| **Full FT** | **92.50% [84.6, 96.5]** | **83.75% [74.2, 90.3]** | 95.0% [76.4, 99.1] |
+
+| Tool-selection difference | Δ (pp) | 95% CI (pp) | Significant |
+|:---|:---:|:---:|:---:|
+| Full FT − LoRA | +83.75 | [75.0, 91.25] | ✅ |
+| Full FT − DoRA | +78.75 | [68.75, 87.5] | ✅ |
+| Full FT − QLoRA | +46.25 | [33.75, 58.75] | ✅ |
+| QLoRA − LoRA | +37.5 | [25.0, 50.0] | ✅ |
+| QLoRA − DoRA | +32.5 | [18.75, 46.25] | ✅ |
+| DoRA − LoRA | +5.0 | [−5.0, 15.0] | ❌ |
+
+The negative-rejection intervals are wide because there are only 20 negatives: none of the methods can be told apart on that axis.
+
+Argument accuracy needs per-sample predictions, so it has no interval yet. The harness now saves every prediction (`<output_dir>/predictions/`) and reports a strict, tag-only parser next to the lenient one; [`scripts/rescore_predictions.py`](scripts/rescore_predictions.py) rescoring with paired bootstrap runs once predictions exist for all four methods.
 
 #### 📊 Per-Metric Quality Comparison Across Positive & Negative Sets
 
@@ -194,13 +220,16 @@ Visualizing the scale of parameter updates across methods on a logarithmic scale
 ### 3. Key Findings
 
 1. **Full Fine-Tuning clearly won in this setup (92.5% vs. at most 46.25%):**
-   Full FT updates every layer, including the MLP blocks; the adapters touched only attention projections. The gap is large enough to be meaningful even with n=80. It is a comparison against *attention-only, r=16* adapters, though, not against PEFT in general.
+   Full FT updates every layer, including the MLP blocks; the adapters touched only attention projections. The gap is significant even with n=80: Full FT − QLoRA is +46.25 pp, 95% CI [33.75, 58.75]. It is a comparison against *attention-only, r=16* adapters, though, not against PEFT in general.
 2. **QLoRA beat LoRA (46.25% vs 8.75%), but the cause is unknown:**
-   The two runs should differ only in 4-bit quantization, yet a 5x gap is unusually large. Other differences between the runs are possible: the QLoRA notebook used `bnb_4bit_compute_dtype: float16` while `configs/qlora.yaml` says `bfloat16`, and LoRA took longer to train than QLoRA, which is the reverse of what is usually expected. With a single seed, this result does not support the claim that "quantization acts as regularization". It should be re-checked before any explanation is attached to it. Part of QLoRA's score also comes from the lenient parser (bare JSON without `<tool_call>` tags).
+   The gap is significant (+37.5 pp, 95% CI [25.0, 50.0]), but the two runs should differ only in 4-bit quantization, so a 5x gap is unusually large. Other differences between the runs are possible: the QLoRA notebook used `bnb_4bit_compute_dtype: float16` while `configs/qlora.yaml` says `bfloat16`, and LoRA took longer to train than QLoRA, which is the reverse of what is usually expected. With a single seed, this result does not support the claim that "quantization acts as regularization". It should be re-checked before any explanation is attached to it. Part of QLoRA's score also comes from the lenient parser (bare JSON without `<tool_call>` tags).
 3. **DoRA was slightly better than LoRA (13.75% vs 8.75%):**
-   That is 11 vs 7 correct samples out of 80, a 4-sample difference from a single run. It is within what run-to-run noise could produce, so it is not evidence of a real DoRA advantage.
+   That is 11 vs 7 correct samples out of 80. The 95% CI of the difference, [−5.0, 15.0] pp, includes zero, so it is not evidence of a real DoRA advantage.
 4. **Negative rejection was 85–95%, but not hallucination-free:**
    Fine-tuning did not cause heavy over-triggering. Still, LoRA, DoRA and Full FT each made an unnecessary tool call on 1 of 20 negative prompts (5%), and QLoRA on 3 of 20 (15%). The negatives are also built from a small fixed pool of question templates shared between train and val, so this score may partly reflect memorization (see [Limitations](#limitations)).
+
+5. **The first QLoRA runs scored 0%, and the cause was in the pipeline, not the method:**
+   Two earlier QLoRA evaluations got 0/80 positives (the 20% "accuracy" was only the 20 negatives counted as correct rejections). The root causes were training with `max_seq_len=512`, which truncated 87.7% of examples and cut out the `<tool_call>` format instructions; a stop token the model never learned (`<|im_end|>`), so every generation ran to `max_new_tokens`; and a 16-bit model load with `bfloat16` on a T4. Fixing these brought QLoRA to the 46.25% above. Write-up: [reports/qlora_forensic_debugging_report.md](reports/qlora_forensic_debugging_report.md).
 
 > 📊 Per-method details and error analysis: [reports/final_benchmark_report.md](reports/final_benchmark_report.md)
 
@@ -219,7 +248,7 @@ The benchmark investigated the following questions:
 ## Limitations
 
 * **Baseline not measured on the eval set:** only a 5-sample CPU smoke test exists. Re-run `scripts/run_baseline.py` on the full 100-sample `eval_subset.jsonl` on GPU.
-* **Single seed, small eval set:** one run per method, 80 positive and 20 negative samples, no confidence intervals. Differences of a few percentage points (especially on the 20 negatives, where one sample = 5%) are not reliable.
+* **Single seed, small eval set:** one run per method, 80 positive and 20 negative samples. The [confidence intervals](#confidence-intervals) cover eval-set sampling but not run-to-run variance, so differences of a few percentage points (especially on the 20 negatives, where one sample = 5%) are not reliable.
 * **Confounded PEFT comparison:** the adapters target only `q/k/v/o_proj`, while Full FT updates all layers. Full FT also uses a different learning rate and batch layout (2e-5, 1×8 vs 2e-4, 2×4).
 * **Lenient output parser:** bare `{"name": ...}` JSON without `<tool_call>` tags is accepted as a tool call. Under a strict parser the adapter scores (especially QLoRA) would likely drop.
 * **Only the first tool call is scored:** extra or missing calls in parallel tool-call examples are not penalized.
@@ -250,7 +279,7 @@ scripts/
   Baseline and experiment entry points
 
 tests/
-  Evaluation and metric tests
+  76 unit tests: data, collator, training, metrics, statistics, harness and agent
 
 reports/
   Generated benchmark results and visualizations
@@ -361,7 +390,7 @@ Evaluation pipeline'ı training kodundan bağımsız tasarlanmıştır. Böylece
 > - **Fine-Tuning Veri Seti:** `NousResearch/hermes-function-calling-v1` (1.893 pozitif örnek + 250 sentetik negatif ret örneği)
 > - **Değerlendirme Kümesi:** 100 dengeli test örneği (80 tool gerektiren / 20 negatif ret)
 > - **Donanım:** Tek NVIDIA Tesla T4 GPU (16 GB VRAM) — Google Colab
-> - **Çalıştırma sayısı:** Her yöntem için tek eğitim (seed 42); tekrar eden seed veya güven aralığı yok. Bkz. [Sınırlamalar](#sınırlamalar).
+> - **Çalıştırma sayısı:** Her yöntem için tek eğitim (seed 42). Her oran, eval örnekleri üzerinden %95 güven aralığıyla verildi ([aşağıda](#güven-aralıkları)); tekrar eden seed çalıştırılmadı. Bkz. [Sınırlamalar](#sınırlamalar).
 
 ---
 
@@ -380,6 +409,32 @@ Benchmark, modelin tool çağırma yeteneğini dört kritik boyutta ölçer: do�
 *† Baseline, 100 örneklik eval setinde **değerlendirilmedi**. Yalnızca CPU'da 5 örneklik bir deneme çalıştırması var (2 tool / 3 tool-gerektirmeyen — [`reports/baseline_metrics.json`](reports/baseline_metrics.json)): 0/2 doğru tool çağrısı, 3/3 doğru ret. Burada daha önce gösterilen değerler ölçülmemiş, tahmin edilmişti. **Yapılacak:** `scripts/run_baseline.py`, tüm `eval_subset.jsonl` üzerinde aynı T4 GPU'da yeniden çalıştırılmalı.*
 
 *‡ Parser, `<tool_call>` etiketi olmayan çıplak `{"name": ...}` JSON nesnelerini de tool çağrısı olarak sayıyor. QLoRA çıktılarının çoğu bu biçimde (ör. `�\n{"name": "find_astronomy_apps", ...}` ve ardından anlamsız metin). Yalnızca etiketleri kabul eden sıkı bir parser'la bu skor daha düşük çıkar. Bkz. [Sınırlamalar](#sınırlamalar).*
+
+<a name="güven-aralıkları"></a>
+
+#### %95 Güven Aralıkları
+
+[`scripts/compute_confidence_intervals.py`](scripts/compute_confidence_intervals.py) ile metrik sayımlarından hesaplandı; tam çıktı [`reports/confidence_intervals.json`](reports/confidence_intervals.json) dosyasında. Tekil oranlar için Wilson aralığı, yöntemler arası farklar için bağımsız bootstrap (10.000 örnekleme, temkinli tercih) kullanıldı. Bu aralıklar yalnızca 100 eval örneğinin örnekleme belirsizliğini kapsıyor, seed'den seed'e değişimi değil.
+
+| Yöntem | Tool Seçimi (Poz, n=80) | JSON Geçerliliği (Poz, n=80) | Negatif Ret (n=20) |
+|:---|:---:|:---:|:---:|
+| **LoRA** | %8.75 [4.3, 17.0] | %11.25 [6.0, 20.0] | %95.0 [76.4, 99.1] |
+| **DoRA** | %13.75 [7.9, 23.0] | %15.00 [8.8, 24.4] | %95.0 [76.4, 99.1] |
+| **QLoRA** | %46.25 [35.7, 57.1] | %46.25 [35.7, 57.1] | %85.0 [64.0, 94.8] |
+| **Full FT** | **%92.50 [84.6, 96.5]** | **%83.75 [74.2, 90.3]** | %95.0 [76.4, 99.1] |
+
+| Tool seçimi farkı | Δ (puan) | %95 GA (puan) | Anlamlı |
+|:---|:---:|:---:|:---:|
+| Full FT − LoRA | +83.75 | [75.0, 91.25] | ✅ |
+| Full FT − DoRA | +78.75 | [68.75, 87.5] | ✅ |
+| Full FT − QLoRA | +46.25 | [33.75, 58.75] | ✅ |
+| QLoRA − LoRA | +37.5 | [25.0, 50.0] | ✅ |
+| QLoRA − DoRA | +32.5 | [18.75, 46.25] | ✅ |
+| DoRA − LoRA | +5.0 | [−5.0, 15.0] | ❌ |
+
+Yalnızca 20 negatif örnek olduğu için negatif ret aralıkları geniş; bu eksende yöntemler birbirinden ayırt edilemiyor.
+
+Argüman doğruluğu için örnek bazlı tahminler gerektiğinden henüz aralığı yok. Harness artık her tahmini kaydediyor (`<output_dir>/predictions/`) ve gevşek parser'ın yanında yalnızca etiketleri kabul eden sıkı parser sonucunu da raporluyor; dört yöntemin de tahminleri olduğunda [`scripts/rescore_predictions.py`](scripts/rescore_predictions.py) eşleştirilmiş bootstrap ile yeniden puanlıyor.
 
 #### 📊 Pozitif ve Negatif Dağılımlarda Metrik Karşılaştırması
 
@@ -454,13 +509,16 @@ Yöntemlerin güncellediği parametre sayısının logaritmik ölçekte karşıl
 ### 3. Temel Bulgular
 
 1. **Bu kurulumda Full Fine-Tuning açık ara kazandı (%92.5'e karşı en fazla %46.25):**
-   Full FT, MLP blokları dahil tüm katmanları güncelliyor; adapter'lar ise yalnızca attention projeksiyonlarına dokundu. Fark, n=80 ile bile anlamlı sayılacak kadar büyük. Ancak bu karşılaştırma genel olarak PEFT ile değil, *yalnızca attention'a uygulanan, r=16* adapter'larla yapıldı.
+   Full FT, MLP blokları dahil tüm katmanları güncelliyor; adapter'lar ise yalnızca attention projeksiyonlarına dokundu. Fark n=80 ile bile anlamlı: Full FT − QLoRA +46.25 puan, %95 GA [33.75, 58.75]. Ancak bu karşılaştırma genel olarak PEFT ile değil, *yalnızca attention'a uygulanan, r=16* adapter'larla yapıldı.
 2. **QLoRA, LoRA'yı geçti (%46.25'e karşı %8.75), ancak nedeni bilinmiyor:**
-   İki çalıştırmanın yalnızca 4-bit kuantizasyonda farklı olması gerekiyordu; buna rağmen 5 katlık bir fark alışılmadık derecede büyük. Çalıştırmalar arasında başka farklar da olabilir: QLoRA notebook'u `bnb_4bit_compute_dtype: float16` kullandı, `configs/qlora.yaml` ise `bfloat16` diyor; ayrıca LoRA'nın eğitimi QLoRA'dan uzun sürdü, normalde tersi beklenir. Tek seed ile bu sonuç "kuantizasyon düzenlileştirme etkisi yapıyor" iddiasını desteklemiyor; bir açıklama yapmadan önce yeniden doğrulanmalı. QLoRA'nın skorunun bir kısmı da gevşek parser'dan geliyor (`<tool_call>` etiketi olmayan çıplak JSON).
+   Fark anlamlı (+37.5 puan, %95 GA [25.0, 50.0]), ancak iki çalıştırmanın yalnızca 4-bit kuantizasyonda farklı olması gerekiyordu; 5 katlık bir fark alışılmadık derecede büyük. Çalıştırmalar arasında başka farklar da olabilir: QLoRA notebook'u `bnb_4bit_compute_dtype: float16` kullandı, `configs/qlora.yaml` ise `bfloat16` diyor; ayrıca LoRA'nın eğitimi QLoRA'dan uzun sürdü, normalde tersi beklenir. Tek seed ile bu sonuç "kuantizasyon düzenlileştirme etkisi yapıyor" iddiasını desteklemiyor; bir açıklama yapmadan önce yeniden doğrulanmalı. QLoRA'nın skorunun bir kısmı da gevşek parser'dan geliyor (`<tool_call>` etiketi olmayan çıplak JSON).
 3. **DoRA, LoRA'dan biraz daha iyi çıktı (%13.75'e karşı %8.75):**
-   Bu, 80 örnekte 11'e karşı 7 doğru demek: tek bir çalıştırmada 4 örneklik bir fark. Çalıştırmadan çalıştırmaya oluşabilecek gürültü içinde kalıyor; gerçek bir DoRA avantajının kanıtı değil.
+   Bu, 80 örnekte 11'e karşı 7 doğru demek. Farkın %95 güven aralığı ([−5.0, 15.0] puan) sıfırı içeriyor; gerçek bir DoRA avantajının kanıtı değil.
 4. **Negatif ret %85–95 arasında, ama halüsinasyonsuz değil:**
    Fine-tuning ciddi bir aşırı tetiklenmeye yol açmadı. Yine de LoRA, DoRA ve Full FT, 20 negatif prompt'un 1'inde gereksiz tool çağırdı (%5); QLoRA ise 20'nin 3'ünde (%15). Negatifler ayrıca train ve val arasında paylaşılan küçük, sabit bir soru şablonu havuzundan üretiliyor; bu yüzden skor kısmen ezberi yansıtıyor olabilir (bkz. [Sınırlamalar](#sınırlamalar)).
+
+5. **İlk QLoRA çalıştırmaları %0 aldı; sorun yöntemde değil, hattaydı:**
+   İki önceki QLoRA değerlendirmesi 80 pozitifin hiçbirini doğru yapamadı (%20'lik "doğruluk" yalnızca doğru ret sayılan 20 negatiften geliyordu). Kök nedenler: örneklerin %87.7'sini kırpıp `<tool_call>` format talimatlarını silen `max_seq_len=512` ile eğitim; modelin hiç öğrenemediği stop token (`<|im_end|>`), bu yüzden her üretimin `max_new_tokens` sınırına kadar sürmesi; ve T4 üzerinde `bfloat16` ile 16-bit model yüklenmesi. Bunlar düzeltilince QLoRA yukarıdaki %46.25'e çıktı. Rapor: [reports/qlora_forensic_debugging_report.md](reports/qlora_forensic_debugging_report.md).
 
 > 📊 Yöntem bazında ayrıntılar ve hata analizi: [reports/final_benchmark_report.md](reports/final_benchmark_report.md)
 
@@ -479,7 +537,7 @@ Benchmark aşağıdaki sorulara cevap aradı:
 ## Sınırlamalar
 
 * **Baseline eval setinde ölçülmedi:** yalnızca CPU'da 5 örneklik bir deneme var. `scripts/run_baseline.py`, 100 örneklik `eval_subset.jsonl`'ın tamamı üzerinde GPU'da yeniden çalıştırılmalı.
-* **Tek seed, küçük eval seti:** her yöntem için tek çalıştırma, 80 pozitif ve 20 negatif örnek, güven aralığı yok. Birkaç puanlık farklar güvenilir değil (özellikle bir örneğin %5'e denk geldiği 20 negatifte).
+* **Tek seed, küçük eval seti:** her yöntem için tek çalıştırma, 80 pozitif ve 20 negatif örnek. [Güven aralıkları](#güven-aralıkları) eval setinin örnekleme belirsizliğini kapsıyor ama çalıştırmadan çalıştırmaya değişimi kapsamıyor; bu yüzden birkaç puanlık farklar güvenilir değil (özellikle bir örneğin %5'e denk geldiği 20 negatifte).
 * **PEFT karşılaştırmasında karıştırıcı faktör:** adapter'lar yalnızca `q/k/v/o_proj` katmanlarını hedefliyor, Full FT ise tüm katmanları güncelliyor. Full FT'nin öğrenme oranı ve batch düzeni de farklı (2e-5, 1×8'e karşı 2e-4, 2×4).
 * **Gevşek çıktı parser'ı:** `<tool_call>` etiketi olmayan çıplak `{"name": ...}` JSON da tool çağrısı olarak kabul ediliyor. Sıkı bir parser'la adapter skorları (özellikle QLoRA) muhtemelen düşer.
 * **Yalnızca ilk tool çağrısı puanlanıyor:** paralel tool çağrısı içeren örneklerde fazla ya da eksik çağrılar cezalandırılmıyor.
@@ -510,7 +568,7 @@ scripts/
   Baseline ve deney çalıştırma scriptleri
 
 tests/
-  Evaluation ve metric testleri
+  76 birim test: veri, collator, eğitim, metrikler, istatistik, harness ve agent
 
 reports/
   Benchmark sonuçları ve görselleştirmeler
